@@ -33,7 +33,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
   const streamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioBufferRef = useRef<Float32Array[]>([])
   const isRecordingRef = useRef(false)
@@ -80,23 +80,27 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
 
   // Web Speech API fallback
   const startWebSpeech = useCallback((stream: MediaStream) => {
-    const SpeechRecognition =
-      (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition ||
-      window.SpeechRecognition
-    if (!SpeechRecognition) {
+    type AnyWindow = Window & {
+      SpeechRecognition?: new () => InstanceType<typeof window.SpeechRecognition>
+      webkitSpeechRecognition?: new () => InstanceType<typeof window.SpeechRecognition>
+    }
+    const win = window as AnyWindow
+    const SR = win.SpeechRecognition || win.webkitSpeechRecognition
+    if (!SR) {
       onError?.("Speech recognition not supported in this browser.")
       setStatus("error")
       return
     }
-    const recognition = new SpeechRecognition()
+    const recognition = new SR()
     recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = "en-US"
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: Event) => {
+      const e = event as unknown as SpeechRecognitionEvent
       let interim = ""
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const res = event.results[i]
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i]
         if (res.isFinal) {
           const text = res[0].transcript
           setTranscript((prev) => prev + (prev ? " " : "") + text.trim())
@@ -108,8 +112,9 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       }
       setInterimTranscript(interim)
     }
-    recognition.onerror = (e) => {
-      if (e.error !== "aborted") onError?.(`Speech recognition error: ${e.error}`)
+    recognition.onerror = (e: Event) => {
+      const err = e as SpeechRecognitionErrorEvent
+      if (err.error !== "aborted") onError?.(`Speech recognition error: ${err.error}`)
     }
     recognition.start()
     recognitionRef.current = recognition
