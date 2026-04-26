@@ -3,11 +3,15 @@
 import { useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Mic2 } from "lucide-react"
+import { VocabularyItem } from "@/lib/types"
 
 interface TranscriptPanelProps {
   transcript: string
   interimTranscript: string
   isRecording: boolean
+  isEditing: boolean
+  vocabulary: VocabularyItem[]
+  onTranscriptChange: (value: string) => void
   onTextSelect: (text: string) => void
 }
 
@@ -15,6 +19,9 @@ export function TranscriptPanel({
   transcript,
   interimTranscript,
   isRecording,
+  isEditing,
+  vocabulary,
+  onTranscriptChange,
   onTextSelect,
 }: TranscriptPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -48,9 +55,17 @@ export function TranscriptPanel({
               : "Press Start to begin transcribing your computer audio"}
           </p>
         </div>
+      ) : isEditing ? (
+        <textarea
+          value={transcript}
+          onChange={(e) => onTranscriptChange(e.target.value)}
+          className="h-full w-full resize-none bg-transparent text-foreground outline-none"
+          spellCheck={false}
+          placeholder="Edit transcript here..."
+        />
       ) : (
         <>
-          <span className="text-foreground whitespace-pre-wrap">{transcript}</span>
+          <span className="text-foreground whitespace-pre-wrap">{renderHighlightedTranscript(transcript, vocabulary)}</span>
           {interimTranscript && (
             <span className={cn("text-muted-foreground", isRecording && "animate-pulse")}>
               {interimTranscript}
@@ -61,4 +76,45 @@ export function TranscriptPanel({
       )}
     </div>
   )
+}
+
+function renderHighlightedTranscript(text: string, vocabulary: VocabularyItem[]) {
+  if (!text || vocabulary.length === 0) return text
+
+  const terms = Array.from(
+    new Map(
+      vocabulary
+        .map((v) => [v.word.trim().toLowerCase(), v] as const)
+        .filter(([w]) => w.length > 1)
+    ).values()
+  ).sort((a, b) => b.word.length - a.word.length)
+
+  if (terms.length === 0) return text
+
+  const escaped = terms.map((t) => escapeRegExp(t.word.trim())).filter(Boolean)
+  if (escaped.length === 0) return text
+
+  const matcher = new RegExp(`(${escaped.join("|")})`, "gi")
+  const chunks = text.split(matcher)
+
+  return chunks.map((chunk, idx) => {
+    const match = terms.find((t) => t.word.trim().toLowerCase() === chunk.toLowerCase())
+    if (!match) return chunk
+    const colorClass =
+      match.type === "word"
+        ? "bg-primary/15 text-primary border-primary/30"
+        : "bg-accent/20 text-accent-foreground border-accent/40"
+    return (
+      <span
+        key={`${chunk}-${idx}`}
+        className={cn("inline-block rounded-full border px-1.5 py-0.5 mx-[1px]", colorClass)}
+      >
+        {chunk}
+      </span>
+    )
+  })
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

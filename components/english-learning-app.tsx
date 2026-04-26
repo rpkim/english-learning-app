@@ -8,7 +8,7 @@ import { VocabularyCard } from "@/components/vocabulary-card"
 import { ConversationHistory } from "@/components/conversation-history"
 import { ManualAddForm } from "@/components/manual-add-form"
 import { ConfigDialog } from "@/components/config-dialog"
-import { VocabularyItem, Conversation, ExtractedItem } from "@/lib/types"
+import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -26,12 +26,19 @@ import {
   Settings2,
   Database,
   HardDrive,
+  Pencil,
+  Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getStorageConfig, StorageConfig } from "@/lib/storage-config"
 import {
   localGetConversations,
   localCreateConversation,
+  localUpdateConversationTitle,
+  localDeleteConversation,
+  localGetConversationGroups,
+  localCreateConversationGroup,
+  localDeleteConversationGroup,
   localGetVocabulary,
   localCreateVocabularyItem,
   localUpdateVocabularyItem,
@@ -48,6 +55,7 @@ export function EnglishLearningApp() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
+  const [isEditingTranscript, setIsEditingTranscript] = useState(false)
 
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
@@ -62,6 +70,8 @@ export function EnglishLearningApp() {
 
   // History state
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversationGroups, setConversationGroups] = useState<ConversationGroup[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
 
   // Transcription hook
@@ -74,12 +84,14 @@ export function EnglishLearningApp() {
   useEffect(() => {
     fetchConversations()
     fetchVocabulary()
+    setConversationGroups(localGetConversationGroups())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageConfig.mode])
 
   async function fetchConversations() {
     if (isLocal) {
       setConversations(localGetConversations())
+      setConversationGroups(localGetConversationGroups())
       return
     }
     const res = await fetch("/api/conversations")
@@ -336,6 +348,82 @@ export function EnglishLearningApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setTranscript, isLocal])
 
+  const handleRenameConversation = useCallback(async (conv: Conversation, nextTitle: string) => {
+    const title = nextTitle.trim()
+    if (!title) return
+
+    try {
+      if (isLocal) {
+        const updated = localUpdateConversationTitle(conv.id, title)
+        if (!updated) throw new Error("Failed to rename session")
+        setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
+      } else {
+        const res = await fetch(`/api/conversations/${conv.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        })
+        if (!res.ok) throw new Error("Failed to rename session")
+        const updated: Conversation = await res.json()
+        setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
+      }
+
+      toast.success("Session title updated")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    }
+  }, [isLocal])
+
+  const handleDeleteConversation = useCallback(async (conv: Conversation) => {
+    try {
+      if (isLocal) {
+        localDeleteConversation(conv.id)
+        setConversationGroups(localGetConversationGroups())
+      } else {
+        const res = await fetch(`/api/conversations/${conv.id}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("Failed to delete session")
+      }
+
+      setConversations((prev) => prev.filter((c) => c.id !== conv.id))
+      setVocabulary((prev) => prev.filter((v) => v.conversation_id !== conv.id))
+
+      if (selectedConversationId === conv.id) {
+        setSelectedConversationId(null)
+        setCurrentConversationId(null)
+        setTranscript("")
+        if (isLocal) {
+          setVocabulary(localGetVocabulary())
+        } else {
+          void fetchVocabulary()
+        }
+      }
+
+      toast.success("Session deleted")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    }
+  }, [isLocal, selectedConversationId, setTranscript])
+
+  const handleCreateGroup = useCallback(async (name: string, conversationIds: string[]) => {
+    if (conversationIds.length < 2) return
+    if (!isLocal) {
+      toast.info("Session grouping is currently stored locally.")
+    }
+    const created = localCreateConversationGroup(name, conversationIds)
+    setConversationGroups((prev) => [created, ...prev])
+    setSelectedGroupId(created.id)
+    toast.success("Group created")
+  }, [isLocal])
+
+  const handleDeleteGroup = useCallback(async (groupId: string) => {
+    localDeleteConversationGroup(groupId)
+    setConversationGroups((prev) => prev.filter((g) => g.id !== groupId))
+    if (selectedGroupId === groupId) setSelectedGroupId(null)
+    toast.success("Group deleted")
+  }, [selectedGroupId])
+
   const masteredCount = vocabulary.filter((v) => v.is_mastered).length
   const wordCount = vocabulary.filter((v) => v.type === "word").length
   const idiomCount = vocabulary.length - wordCount
@@ -420,14 +508,35 @@ export function EnglishLearningApp() {
                 onStart={start}
                 onStop={stop}
                 onSave={handleSave}
+                onNew={() => {
+                  reset()
+                  setCurrentConversationId(null)
+                  setSelectedConversationId(null)
+                  setIsEditingTranscript(false)
+                  setShowManualAdd(false)
+                  setManualWord("")
+                }}
                 hasTranscript={transcript.length > 20}
               />
             </div>
             {!isRecording && transcript && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <MousePointerClick className="h-3 w-3" />
-                Select text to save a word
-              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => setIsEditingTranscript((v) => !v)}
+                >
+                  {isEditingTranscript ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                  {isEditingTranscript ? "Done" : "Edit"}
+                </Button>
+                {!isEditingTranscript && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MousePointerClick className="h-3 w-3" />
+                    Select text to save a word
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -452,6 +561,9 @@ export function EnglishLearningApp() {
             transcript={transcript}
             interimTranscript={interimTranscript}
             isRecording={isRecording}
+            isEditing={isEditingTranscript && !isRecording}
+            vocabulary={vocabulary}
+            onTranscriptChange={setTranscript}
             onTextSelect={handleTextSelect}
           />
           {isRecording && (
@@ -599,8 +711,15 @@ export function EnglishLearningApp() {
               <div className="h-full p-3">
                 <ConversationHistory
                   conversations={conversations}
+                  groups={conversationGroups}
+                  selectedGroupId={selectedGroupId}
                   selectedId={selectedConversationId}
                   onSelect={handleSelectConversation}
+                  onRename={handleRenameConversation}
+                  onDelete={handleDeleteConversation}
+                  onCreateGroup={handleCreateGroup}
+                  onDeleteGroup={handleDeleteGroup}
+                  onSelectGroup={setSelectedGroupId}
                 />
               </div>
             </TabsContent>

@@ -27,3 +27,10 @@ export interface ExtractedItem {
   example_sentence: string
   context: string
 }
+
+export interface ConversationGroup {
+  id: string
+  name: string
+  conversation_ids: string[]
+  created_at: string
+}
