@@ -44,7 +44,8 @@ export function VocabularyCard({
     >
       <CardHeader className="py-0 px-2">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
+          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+            <div className="flex items-center gap-1 flex-wrap min-w-0">
             <span className="font-semibold text-foreground text-sm leading-none break-words">
               {item.word}
             </span>
@@ -54,13 +55,14 @@ export function VocabularyCard({
             >
               {TYPE_LABELS[item.type] ?? item.type}
             </Badge>
+            </div>
             {item.korean_translation && (
-              <Badge className="text-xs h-4 px-1.5 shrink-0 bg-korean text-korean-foreground border-0">
+              <Badge className="text-xs h-4 px-1.5 w-fit max-w-full bg-korean text-korean-foreground border-0 overflow-hidden text-ellipsis whitespace-nowrap">
                 {item.korean_translation}
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0 self-start">
             <Button
               variant="ghost"
               size="icon"

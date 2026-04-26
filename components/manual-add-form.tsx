@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { X, Plus } from "lucide-react"
+import { X, Plus, Languages } from "lucide-react"
 
 interface ManualAddFormProps {
   initialWord?: string
@@ -22,11 +22,22 @@ interface ManualAddFormProps {
     definition: string
     context: string
   }) => Promise<void>
+  onTranslateSelected: (text: string) => Promise<void>
+  translatedSelectedText: string | null
+  isTranslatingSelected: boolean
   onCancel: () => void
   isSubmitting: boolean
 }
 
-export function ManualAddForm({ initialWord = "", onAdd, onCancel, isSubmitting }: ManualAddFormProps) {
+export function ManualAddForm({
+  initialWord = "",
+  onAdd,
+  onTranslateSelected,
+  translatedSelectedText,
+  isTranslatingSelected,
+  onCancel,
+  isSubmitting,
+}: ManualAddFormProps) {
   const [word, setWord] = useState(initialWord)
   const [type, setType] = useState("word")
   const [definition, setDefinition] = useState("")
@@ -104,10 +115,30 @@ export function ManualAddForm({ initialWord = "", onAdd, onCancel, isSubmitting 
         />
       </div>
 
-      <Button type="submit" size="sm" className="w-full gap-1.5" disabled={isSubmitting || !word.trim()}>
-        <Plus className="h-3.5 w-3.5" />
-        {isSubmitting ? "Adding..." : "Add to Vocabulary"}
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="w-full gap-1.5"
+          disabled={isTranslatingSelected || !word.trim()}
+          onClick={() => void onTranslateSelected(word.trim())}
+        >
+          <Languages className="h-3.5 w-3.5" />
+          {isTranslatingSelected ? "Translating..." : "번역하기"}
+        </Button>
+        <Button type="submit" size="sm" className="w-full gap-1.5" disabled={isSubmitting || !word.trim()}>
+          <Plus className="h-3.5 w-3.5" />
+          {isSubmitting ? "Adding..." : "Add to Vocabulary"}
+        </Button>
+      </div>
+
+      {translatedSelectedText && (
+        <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+          <p className="text-[11px] text-muted-foreground mb-1">Korean translation</p>
+          <p className="text-sm text-foreground">{translatedSelectedText}</p>
+        </div>
+      )}
     </form>
   )
 }

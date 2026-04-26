@@ -1,9 +1,11 @@
 export type StorageMode = "supabase" | "local"
+export type WhisperModel = "tiny" | "base"
 
 export interface StorageConfig {
   mode: StorageMode
   supabaseUrl: string
   supabaseAnonKey: string
+  whisperModel: WhisperModel
 }
 
 const CONFIG_KEY = "englishlens_storage_config"
@@ -19,6 +21,7 @@ const DEFAULT_CONFIG: StorageConfig = {
   mode: hasBuiltInSupabaseEnv() ? "supabase" : "local",
   supabaseUrl: "",
   supabaseAnonKey: "",
+  whisperModel: "tiny",
 }
 
 export function getStorageConfig(): StorageConfig {

@@ -58,6 +58,19 @@ export function localUpdateConversationTitle(id: string, title: string): Convers
   return items[idx]
 }
 
+export function localUpdateConversationTranscript(id: string, transcript: string): Conversation | null {
+  const items = localGetConversations()
+  const idx = items.findIndex((c) => c.id === id)
+  if (idx === -1) return null
+  items[idx] = {
+    ...items[idx],
+    transcript,
+    updated_at: new Date().toISOString(),
+  }
+  localStorage.setItem(CONV_KEY, JSON.stringify(items))
+  return items[idx]
+}
+
 export function localDeleteConversation(id: string): void {
   const conversations = localGetConversations().filter((c) => c.id !== id)
   localStorage.setItem(CONV_KEY, JSON.stringify(conversations))
