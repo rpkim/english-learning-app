@@ -1,8 +1,8 @@
 {
   "name": "my-project",
   "version": "0.1.0",
-  "description": "EnglishLens desktop app",
-  "author": "EnglishLens",
+  "description": "SurviveEngilsh desktop app",
+  "author": "SurviveEngilsh",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
@@ -87,7 +87,7 @@
   },
   "build": {
     "appId": "com.englishlens.desktop",
-    "productName": "EnglishLens",
+    "productName": "SurviveEngilsh",
     "directories": {
       "output": "dist-desktop"
     },

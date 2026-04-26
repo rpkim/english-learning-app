@@ -9,6 +9,8 @@ export type TranscriptionStatus =
   | "recording"
   | "error"
 
+export type AudioInputSource = "system" | "microphone"
+
 export interface TranscriptionDebugInfo {
   framesCaptured: number
   chunksSent: number
@@ -351,8 +353,8 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     [useWebSpeech, startWebSpeech, processAudioChunk, stopRef]
   )
 
-  const start = useCallback(async () => {
-    if (!navigator.mediaDevices?.getDisplayMedia || !navigator.mediaDevices?.getUserMedia) {
+  const start = useCallback(async (preferredSource: AudioInputSource = "system") => {
+    if (!navigator.mediaDevices?.getUserMedia) {
       onErrorRef.current?.("Media capture is not supported in this browser. Please use latest Chrome.")
       setStatus("error")
       return
@@ -361,55 +363,39 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     if (!useWebSpeech && !workerReadyRef.current) {
       setStatus("loading_model")
     }
-    // 1) Try system audio capture via getDisplayMedia
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          sampleRate: 16000,
-        },
-      })
-      // Some browsers return a display stream without audio if the user
-      // doesn't enable "Share system audio". In that case, fall back to mic.
-      if (stream.getAudioTracks().length === 0) {
-        stream.getTracks().forEach((t) => t.stop())
-        throw new Error("NO_SYSTEM_AUDIO_TRACK")
-      }
-      startFromStream(stream, "system")
-      return
-    } catch (displayErr: unknown) {
-      const msg = displayErr instanceof Error ? displayErr.message : String(displayErr)
-      const isNoAudioTrack = msg.includes("NO_SYSTEM_AUDIO_TRACK")
-      const isPermissionsPolicyError =
-        msg.toLowerCase().includes("permissions policy") ||
-        msg.toLowerCase().includes("disallowed") ||
-        msg.toLowerCase().includes("not allowed") ||
-        msg.toLowerCase().includes("notallowederror")
-      const isExplicitDeny = msg.toLowerCase().includes("permission denied") || msg.toLowerCase().includes("dismissed")
-
-      if (isExplicitDeny) {
-        // User actively cancelled the screen picker — don't fall back silently
-        onErrorRef.current?.("Screen share cancelled. Click Start to try again.")
+    if (preferredSource === "system") {
+      if (!navigator.mediaDevices.getDisplayMedia) {
+        onErrorRef.current?.("System audio capture is not supported in this browser.")
         setStatus("ready")
         return
       }
-
-      if (isNoAudioTrack) {
-        onErrorRef.current?.("System audio was not shared. Switched to microphone input.")
-      } else if (!isPermissionsPolicyError) {
-        // Unexpected error — surface it
-        onErrorRef.current?.(msg)
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            sampleRate: 16000,
+          },
+        })
+        if (stream.getAudioTracks().length === 0) {
+          stream.getTracks().forEach((t) => t.stop())
+          onErrorRef.current?.("No system audio track found. Re-share with tab/system audio enabled.")
+          setStatus("ready")
+          return
+        }
+        startFromStream(stream, "system")
+        return
+      } catch (displayErr: unknown) {
+        const msg = displayErr instanceof Error ? displayErr.message : String(displayErr)
+        const isExplicitDeny = msg.toLowerCase().includes("permission denied") || msg.toLowerCase().includes("dismissed")
+        onErrorRef.current?.(isExplicitDeny ? "Screen share cancelled. Click Start to try again." : msg)
         setStatus("ready")
         return
       }
-
-      // Permissions policy blocked getDisplayMedia (e.g. inside an iframe / v0 preview)
-      // Fall back to microphone automatically
     }
 
-    // 2) Fall back to microphone via getUserMedia
+    // Microphone mode
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {

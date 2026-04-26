@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useMemo } from "react"
-import { useTranscription } from "@/hooks/use-transcription"
+import { AudioInputSource, useTranscription } from "@/hooks/use-transcription"
 import { TranscriptPanel } from "@/components/transcript-panel"
 import { RecordingControls } from "@/components/recording-controls"
 import { VocabularyCard } from "@/components/vocabulary-card"
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Toaster } from "@/components/ui/sonner"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import {
   BookOpen,
@@ -29,9 +30,21 @@ import {
   Pencil,
   Check,
   Languages,
+  Globe,
+  Monitor,
+  Mic,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Pin,
+  PinOff,
+  Minimize2,
+  Maximize2,
+  EyeOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getStorageConfig, StorageConfig } from "@/lib/storage-config"
+import { getStorageConfig, saveStorageConfig, StorageConfig } from "@/lib/storage-config"
 import {
   localGetConversations,
   localCreateConversation,
@@ -40,7 +53,9 @@ import {
   localDeleteConversation,
   localGetConversationGroups,
   localCreateConversationGroup,
+  localUpdateConversationGroupName,
   localDeleteConversationGroup,
+  localMoveConversationToGroup,
   localGetVocabulary,
   localCreateVocabularyItem,
   localUpdateVocabularyItem,
@@ -57,6 +72,9 @@ export function EnglishLearningApp() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
+  const [isCurrentTranscriptSaved, setIsCurrentTranscriptSaved] = useState(false)
+  const [showStartSourceDialog, setShowStartSourceDialog] = useState(false)
+  const [startViewMode, setStartViewMode] = useState<"compact" | "full">("full")
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
   const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
   const [recentTranslation, setRecentTranslation] = useState<{ source: string; korean: string } | null>(null)
@@ -67,6 +85,7 @@ export function EnglishLearningApp() {
   const [vocabView, setVocabView] = useState<"items" | "frequency">("items")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
+  const [isBatchTranslating, setIsBatchTranslating] = useState(false)
 
   // Manual add state
   const [showManualAdd, setShowManualAdd] = useState(false)
@@ -80,6 +99,12 @@ export function EnglishLearningApp() {
   const [conversationGroups, setConversationGroups] = useState<ConversationGroup[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [manualLayout, setManualLayout] = useState<"auto" | "leftFocus" | "rightFocus">("auto")
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false)
+  const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
 
   // Transcription hook
   const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, start, stop, reset, setTranscript } =
@@ -130,6 +155,12 @@ export function EnglishLearningApp() {
     setTranslatedSelectedText(null)
     setShowManualAdd(true)
   }, [])
+
+  useEffect(() => {
+    if (!transcript.trim()) {
+      setIsCurrentTranscriptSaved(false)
+    }
+  }, [transcript])
 
   const handleTranslateSelectedText = useCallback(async (text: string) => {
     const input = text.trim()
@@ -232,8 +263,7 @@ export function EnglishLearningApp() {
         setVocabulary((prev) => [...saved, ...prev])
         toast.success(`Extracted ${items.length} vocabulary item${items.length !== 1 ? "s" : ""}!`)
       }
-
-      reset()
+      setIsCurrentTranscriptSaved(true)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)
@@ -242,7 +272,7 @@ export function EnglishLearningApp() {
       setIsExtracting(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transcript, duration, reset, isLocal])
+  }, [transcript, duration, isLocal])
 
   // Manual add from form
   const handleManualAdd = useCallback(
@@ -395,6 +425,7 @@ export function EnglishLearningApp() {
     setSelectedConversationId(conv.id)
     setTranscript(conv.transcript)
     setCurrentConversationId(conv.id)
+    setIsCurrentTranscriptSaved(true)
     if (isLocal) {
       setVocabulary(localGetVocabulary(conv.id))
     } else {
@@ -461,15 +492,14 @@ export function EnglishLearningApp() {
     }
   }, [isLocal, selectedConversationId, setTranscript])
 
-  const handleCreateGroup = useCallback(async (name: string, conversationIds: string[]) => {
-    if (conversationIds.length < 2) return
+  const handleCreateGroup = useCallback(async (name: string) => {
     if (!isLocal) {
       toast.info("Session grouping is currently stored locally.")
     }
-    const created = localCreateConversationGroup(name, conversationIds)
+    const created = localCreateConversationGroup(name, [])
     setConversationGroups((prev) => [created, ...prev])
     setSelectedGroupId(created.id)
-    toast.success("Group created")
+    toast.success("Workspace created")
   }, [isLocal])
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
@@ -478,6 +508,18 @@ export function EnglishLearningApp() {
     if (selectedGroupId === groupId) setSelectedGroupId(null)
     toast.success("Group deleted")
   }, [selectedGroupId])
+
+  const handleRenameGroup = useCallback(async (groupId: string, nextName: string) => {
+    const name = nextName.trim()
+    if (!name) return
+    const updated = localUpdateConversationGroupName(groupId, name)
+    if (!updated) {
+      toast.error("Failed to rename workspace")
+      return
+    }
+    setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
+    toast.success("Workspace name updated")
+  }, [])
 
   const handleSelectGroup = useCallback((groupId: string | null) => {
     setSelectedGroupId(groupId)
@@ -492,6 +534,13 @@ export function EnglishLearningApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLocal])
+
+  const handleMoveConversationToGroup = useCallback((conversationId: string, groupId: string | null) => {
+    const updated = localMoveConversationToGroup(conversationId, groupId)
+    setConversationGroups(updated)
+    setSelectedGroupId(groupId)
+    toast.success(groupId ? "Moved to group" : "Moved to unclassified")
+  }, [])
 
   const handleToggleEditTranscript = useCallback(async () => {
     if (!isEditingTranscript) {
@@ -532,7 +581,7 @@ export function EnglishLearningApp() {
   }, [isEditingTranscript, selectedConversationId, currentConversationId, isLocal, transcript])
 
   const activeGroupConversationIds = useMemo(() => {
-    if (!selectedGroupId) return null
+    if (!selectedGroupId || selectedGroupId === "__ungrouped__") return null
     const group = conversationGroups.find((g) => g.id === selectedGroupId)
     return group ? new Set(group.conversation_ids) : null
   }, [selectedGroupId, conversationGroups])
@@ -541,11 +590,85 @@ export function EnglishLearningApp() {
     if (selectedConversationId) {
       return vocabulary.filter((v) => v.conversation_id === selectedConversationId)
     }
+    if (selectedGroupId === "__ungrouped__") {
+      const grouped = new Set(conversationGroups.flatMap((g) => g.conversation_ids))
+      const unclassifiedConversationIds = new Set(conversations.filter((c) => !grouped.has(c.id)).map((c) => c.id))
+      return vocabulary.filter((v) => v.conversation_id && unclassifiedConversationIds.has(v.conversation_id))
+    }
     if (activeGroupConversationIds) {
       return vocabulary.filter((v) => v.conversation_id && activeGroupConversationIds.has(v.conversation_id))
     }
     return vocabulary
-  }, [vocabulary, selectedConversationId, activeGroupConversationIds])
+  }, [vocabulary, selectedConversationId, activeGroupConversationIds, selectedGroupId, conversationGroups, conversations])
+
+  const handleTranslateScoped = useCallback(async () => {
+    const targets = scopedVocabulary.filter((item) => {
+      if (typeof item.korean_translation !== "string") return true
+      return item.korean_translation.trim().length === 0
+    })
+    if (targets.length === 0) {
+      toast.info("No untranslated items in this scope")
+      return
+    }
+
+    setIsBatchTranslating(true)
+    try {
+      const res = await fetch("/api/translate-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: targets.map((item) => ({
+            id: item.id,
+            word: item.word,
+            type: item.type,
+            definition: item.definition,
+            example_sentence: item.example_sentence,
+            context: item.context,
+          })),
+        }),
+      })
+      if (!res.ok) throw new Error("Batch translation failed")
+      const data = await res.json()
+      const translations: Record<string, string> = (data?.translations && typeof data.translations === "object")
+        ? data.translations as Record<string, string>
+        : {}
+      const translatedIds = Object.keys(translations).filter((id) => typeof translations[id] === "string" && translations[id].trim())
+      if (translatedIds.length === 0) {
+        toast.info("No translations returned")
+        return
+      }
+
+      if (isLocal) {
+        for (const id of translatedIds) {
+          localUpdateVocabularyItem(id, { korean_translation: translations[id] })
+        }
+      } else {
+        await Promise.all(
+          translatedIds.map((id) =>
+            fetch(`/api/vocabulary/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ korean_translation: translations[id] }),
+            })
+          )
+        )
+      }
+
+      setVocabulary((prev) =>
+        prev.map((item) => {
+          const t = translations[item.id]
+          if (!t || !t.trim()) return item
+          return { ...item, korean_translation: t.trim() }
+        })
+      )
+      toast.success(`Translated ${translatedIds.length} item${translatedIds.length > 1 ? "s" : ""}`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsBatchTranslating(false)
+    }
+  }, [scopedVocabulary, isLocal])
 
   const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
   const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
@@ -560,13 +683,18 @@ export function EnglishLearningApp() {
     if (selectedConversationId) {
       return conversations.filter((c) => c.id === selectedConversationId)
     }
+    if (selectedGroupId === "__ungrouped__") {
+      const grouped = new Set(conversationGroups.flatMap((g) => g.conversation_ids))
+      return conversations.filter((c) => !grouped.has(c.id))
+    }
     if (activeGroupConversationIds) {
       return conversations.filter((c) => activeGroupConversationIds.has(c.id))
     }
     return conversations
-  }, [conversations, selectedConversationId, activeGroupConversationIds])
+  }, [conversations, selectedConversationId, activeGroupConversationIds, selectedGroupId, conversationGroups])
 
   const frequentWords = useMemo(() => {
+    const excluded = new Set((storageConfig.topWordExcludes ?? []).map((w) => w.toLowerCase()))
     const stop = new Set([
       "the","a","an","and","or","to","of","in","on","at","for","with","is","are","was","were","be","been","being",
       "it","this","that","these","those","i","you","he","she","we","they","them","his","her","our","their","my","me",
@@ -577,7 +705,7 @@ export function EnglishLearningApp() {
     for (const conv of scopeConversations) {
       const words = conv.transcript.toLowerCase().match(/[a-z']+/g) ?? []
       for (const w of words) {
-        if (w.length < 3 || stop.has(w)) continue
+        if (w.length < 3 || stop.has(w) || excluded.has(w)) continue
         counts.set(w, (counts.get(w) ?? 0) + 1)
       }
     }
@@ -585,7 +713,21 @@ export function EnglishLearningApp() {
       .map(([word, count]) => ({ word, count }))
       .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
       .slice(0, 120)
-  }, [scopeConversations])
+  }, [scopeConversations, storageConfig.topWordExcludes])
+
+  const handleExcludeTopWord = useCallback((word: string) => {
+    const normalized = word.trim().toLowerCase()
+    if (!normalized) return
+    const prev = storageConfig.topWordExcludes ?? []
+    if (prev.includes(normalized)) return
+    const nextConfig: StorageConfig = {
+      ...storageConfig,
+      topWordExcludes: [...prev, normalized].sort(),
+    }
+    setStorageConfig(nextConfig)
+    saveStorageConfig(nextConfig)
+    toast.success(`Excluded "${normalized}" from Top words`)
+  }, [storageConfig])
 
   const handleAddFrequentWord = useCallback(async (word: string) => {
     const already = vocabulary.some((v) => v.word.toLowerCase() === word.toLowerCase())
@@ -630,14 +772,128 @@ export function EnglishLearningApp() {
     }
   }, [vocabulary, isLocal, selectedConversationId])
 
+  const handleStartWithSource = useCallback(async (source: AudioInputSource) => {
+    setShowStartSourceDialog(false)
+    if (startViewMode === "compact") {
+      setDesktopViewMode("compact")
+      setRightCollapsed(true)
+      setLeftCollapsed(false)
+      setManualLayout("leftFocus")
+      if (typeof window !== "undefined") {
+        await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("compact")
+      }
+    } else {
+      setDesktopViewMode("full")
+      setRightCollapsed(false)
+      setLeftCollapsed(false)
+      setManualLayout("auto")
+      if (typeof window !== "undefined") {
+        await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("full")
+      }
+    }
+    await start(source)
+  }, [start, startViewMode])
+
+  const effectiveLayout = useMemo<"leftFocus" | "rightFocus">(() => {
+    if (manualLayout !== "auto") return manualLayout
+    if (isRecording) return "leftFocus"
+    return "rightFocus"
+  }, [manualLayout, isRecording])
+
+  const leftPanelClass = rightCollapsed
+    ? "flex-1"
+    : effectiveLayout === "leftFocus"
+      ? "basis-[68%]"
+      : "basis-[42%]"
+  const rightPanelClass = leftCollapsed
+    ? "flex-1"
+    : effectiveLayout === "leftFocus"
+      ? "basis-[32%]"
+      : "basis-[58%]"
+
+  const collapseLeftPanel = useCallback(() => {
+    setLeftCollapsed(true)
+    setRightCollapsed(false)
+  }, [])
+
+  const collapseRightPanel = useCallback(() => {
+    setRightCollapsed(true)
+    setLeftCollapsed(false)
+  }, [])
+
+  const expandLeftPanel = useCallback(() => {
+    setLeftCollapsed(false)
+  }, [])
+
+  const expandRightPanel = useCallback(() => {
+    setRightCollapsed(false)
+  }, [])
+
+  useEffect(() => {
+    if (leftCollapsed && rightCollapsed) {
+      // Never keep both panels collapsed at the same time.
+      setRightCollapsed(false)
+    }
+  }, [leftCollapsed, rightCollapsed])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const desktop = (window as Window & { desktop?: { isElectron?: boolean } }).desktop
+    setIsDesktop(Boolean(desktop?.isElectron))
+  }, [])
+
+  const handleToggleAlwaysOnTop = useCallback(async () => {
+    const next = !alwaysOnTop
+    if (typeof window !== "undefined") {
+      const desktop = (window as Window & { desktop?: { setAlwaysOnTop?: (value: boolean) => Promise<boolean> } }).desktop
+      if (desktop?.setAlwaysOnTop) {
+        const ok = await desktop.setAlwaysOnTop(next)
+        if (!ok) {
+          toast.error("Failed to change always-on-top")
+          return
+        }
+      }
+    }
+    setAlwaysOnTop(next)
+  }, [alwaysOnTop])
+
+  const handleToggleDesktopViewMode = useCallback(async () => {
+    const next: "compact" | "full" = desktopViewMode === "compact" ? "full" : "compact"
+    if (typeof window !== "undefined") {
+      const desktop = (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop
+      if (desktop?.setViewMode) {
+        const ok = await desktop.setViewMode(next)
+        if (!ok) {
+          toast.error("Failed to change desktop view")
+          return
+        }
+      }
+    }
+    setDesktopViewMode(next)
+    if (next === "compact") {
+      setRightCollapsed(true)
+      setLeftCollapsed(false)
+      setManualLayout("leftFocus")
+    } else {
+      setRightCollapsed(false)
+      setLeftCollapsed(false)
+      setManualLayout("auto")
+    }
+  }, [desktopViewMode])
+
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
+    <div
+      className={cn(
+        "flex flex-col h-screen bg-background text-foreground transition-[padding] duration-200",
+        isRecording && audioSource === "system" ? "pt-10" : "pt-0"
+      )}
+    >
       {/* Header */}
       <header className="border-b border-border bg-card px-6 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <GraduationCap className="h-6 w-6 text-primary" />
           <div>
-            <h1 className="text-lg font-bold leading-none text-foreground">EnglishLens</h1>
+            <h1 className="text-lg font-bold leading-none text-foreground">SurviveEngilsh</h1>
             <p className="text-xs text-muted-foreground">Real-time transcription + vocabulary builder</p>
           </div>
         </div>
@@ -685,13 +941,38 @@ export function EnglishLearningApp() {
           >
             <Settings2 className="h-4 w-4" />
           </Button>
+          {isDesktop && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => void handleToggleAlwaysOnTop()}
+                title="Always on top"
+              >
+                {alwaysOnTop ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
+                {alwaysOnTop ? "Pinned" : "Pin"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => void handleToggleDesktopViewMode()}
+                title="Compact or full view"
+              >
+                {desktopViewMode === "compact" ? <Maximize2 className="h-3.5 w-3.5" /> : <Minimize2 className="h-3.5 w-3.5" />}
+                {desktopViewMode === "compact" ? "Full" : "Compact"}
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: Transcription */}
-        <div className="flex flex-col flex-1 min-w-0 border-r border-border p-4 gap-3">
+        {!leftCollapsed && (
+        <div className={cn("flex flex-col min-w-0 border-r border-border p-4 gap-3 transition-all", leftPanelClass)}>
           {/* Controls */}
           <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
             <div className="flex items-center gap-2">
@@ -702,7 +983,7 @@ export function EnglishLearningApp() {
                 isExtracting={isExtracting}
                 duration={duration}
                 audioSource={audioSource}
-                onStart={start}
+                onStart={() => setShowStartSourceDialog(true)}
                 onStop={stop}
                 onSave={handleSave}
                 onNew={() => {
@@ -712,9 +993,20 @@ export function EnglishLearningApp() {
                   setIsEditingTranscript(false)
                   setShowManualAdd(false)
                   setManualWord("")
+                  setIsCurrentTranscriptSaved(false)
                 }}
                 hasTranscript={transcript.length > 20}
+                isSaved={isCurrentTranscriptSaved}
               />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={collapseLeftPanel}
+                title="Collapse transcription panel"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
             </div>
             {!isRecording && transcript && (
               <div className="flex items-center gap-2">
@@ -804,24 +1096,85 @@ export function EnglishLearningApp() {
             </div>
           )}
         </div>
+        )}
+        {leftCollapsed && (
+          <div className="w-10 border-r border-border flex items-start justify-center pt-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={expandLeftPanel}
+              title="Expand transcription panel"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Right panel: Vocabulary + History */}
-        <div className="w-80 xl:w-96 flex flex-col border-l border-border shrink-0">
+        {!rightCollapsed && (
+        <div className={cn("flex flex-col border-l border-border min-w-0 transition-all", rightPanelClass)}>
           <Tabs defaultValue="vocabulary" className="flex flex-col flex-1 min-h-0">
             <div className="border-b border-border px-4 pt-2 shrink-0">
+              <div className="mb-2 flex items-center justify-end gap-1">
+                <Button
+                  variant={manualLayout === "leftFocus" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => setManualLayout("leftFocus")}
+                >
+                  Left focus
+                </Button>
+                <Button
+                  variant={manualLayout === "rightFocus" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => setManualLayout("rightFocus")}
+                >
+                  Right focus
+                </Button>
+                <Button
+                  variant={manualLayout === "auto" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => setManualLayout("auto")}
+                >
+                  Auto
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={collapseRightPanel}
+                  title="Collapse right panel"
+                >
+                  <PanelRightClose className="h-3.5 w-3.5" />
+                </Button>
+                {leftCollapsed && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={expandLeftPanel}
+                    title="Expand left panel"
+                  >
+                    <PanelLeftOpen className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
               <TabsList className="w-full">
                 <TabsTrigger value="vocabulary" className="flex-1 gap-1.5 text-xs">
                   <BookOpen className="h-3.5 w-3.5" />
                   Vocabulary
-                  {vocabulary.length > 0 && (
+                  {scopedVocabulary.length > 0 && (
                     <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
-                      {vocabulary.length}
+                      {scopedVocabulary.length}
                     </Badge>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="history" className="flex-1 gap-1.5 text-xs">
                   <History className="h-3.5 w-3.5" />
-                  History
+                  Workspace
                   {conversations.length > 0 && (
                     <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
                       {conversations.length}
@@ -838,8 +1191,10 @@ export function EnglishLearningApp() {
                   <p className="text-xs font-medium text-muted-foreground">
                     {selectedConversationId
                       ? "This session"
-                      : selectedGroupId
-                        ? "This group"
+                      : selectedGroupId === "__ungrouped__"
+                        ? "Unclassified"
+                        : selectedGroupId
+                        ? "This workspace"
                         : "All items"}
                   </p>
                   <div className="flex items-center gap-1">
@@ -900,15 +1255,27 @@ export function EnglishLearningApp() {
                     </Button>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => { setShowManualAdd(true); setManualWord("") }}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => { setShowManualAdd(true); setManualWord("") }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => void handleTranslateScoped()}
+                    disabled={isBatchTranslating}
+                    title="Translate all in current scope"
+                  >
+                    {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
               </div>
 
               <ScrollArea className="flex-1">
@@ -965,6 +1332,16 @@ export function EnglishLearningApp() {
                           >
                             + Add
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs text-muted-foreground"
+                            onClick={() => handleExcludeTopWord(item.word)}
+                            title="Exclude from top words globally"
+                          >
+                            <EyeOff className="h-3 w-3 mr-1" />
+                            Exclude
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -985,13 +1362,29 @@ export function EnglishLearningApp() {
                   onRename={handleRenameConversation}
                   onDelete={handleDeleteConversation}
                   onCreateGroup={handleCreateGroup}
+                  onRenameGroup={handleRenameGroup}
                   onDeleteGroup={handleDeleteGroup}
                   onSelectGroup={handleSelectGroup}
+                  onMoveConversationToGroup={handleMoveConversationToGroup}
                 />
               </div>
             </TabsContent>
           </Tabs>
         </div>
+        )}
+        {rightCollapsed && (
+          <div className="w-10 border-l border-border flex items-start justify-center pt-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={expandRightPanel}
+              title="Expand workspace panel"
+            >
+              <PanelRightOpen className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Config dialog */}
@@ -1003,6 +1396,58 @@ export function EnglishLearningApp() {
           toast.success(`Storage switched to ${cfg.mode === "local" ? "Local (browser)" : "Supabase"}`)
         }}
       />
+
+      <Dialog open={showStartSourceDialog} onOpenChange={setShowStartSourceDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Choose audio source</DialogTitle>
+            <DialogDescription>
+              Select what to transcribe before starting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-2">
+            <div className="mb-1">
+              <p className="text-xs text-muted-foreground mb-1">View mode on start</p>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={startViewMode === "compact" ? "secondary" : "outline"}
+                  onClick={() => setStartViewMode("compact")}
+                >
+                  Compact
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={startViewMode === "full" ? "secondary" : "outline"}
+                  onClick={() => setStartViewMode("full")}
+                >
+                  Full
+                </Button>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start gap-2 h-10"
+              onClick={() => void handleStartWithSource("system")}
+            >
+              <Monitor className="h-4 w-4" />
+              Tab / System audio
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start gap-2 h-10"
+              onClick={() => void handleStartWithSource("microphone")}
+            >
+              <Mic className="h-4 w-4" />
+              Microphone
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Toaster position="bottom-right" richColors />
     </div>

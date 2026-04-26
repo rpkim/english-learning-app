@@ -1,10 +1,12 @@
-const { app, BrowserWindow } = require("electron")
+const { app, BrowserWindow, ipcMain } = require("electron")
 const path = require("path")
 
 const isDev = !app.isPackaged
+let mainWindow = null
+let normalBounds = { width: 1400, height: 920 }
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1400,
     height: 920,
     minWidth: 1100,
@@ -26,6 +28,29 @@ function createWindow() {
     mainWindow.loadURL(startUrl)
   }
 }
+
+ipcMain.handle("desktop:set-always-on-top", (_event, value) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  mainWindow.setAlwaysOnTop(Boolean(value), "screen-saver")
+  return true
+})
+
+ipcMain.handle("desktop:set-view-mode", (_event, mode) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  if (mode === "compact") {
+    const [w, h] = mainWindow.getSize()
+    normalBounds = { width: w, height: h }
+    mainWindow.setResizable(true)
+    mainWindow.setMinimumSize(420, 520)
+    mainWindow.setSize(520, 700, true)
+    return true
+  }
+  const width = Math.max(1100, normalBounds.width)
+  const height = Math.max(760, normalBounds.height)
+  mainWindow.setMinimumSize(1100, 760)
+  mainWindow.setSize(width, height, true)
+  return true
+})
 
 app.whenReady().then(() => {
   createWindow()

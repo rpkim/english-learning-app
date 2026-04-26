@@ -29,6 +29,8 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const [supabaseUrl, setSupabaseUrl] = useState("")
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("")
   const [whisperModel, setWhisperModel] = useState<WhisperModel>("tiny")
+  const [topWordExcludes, setTopWordExcludes] = useState<string[]>([])
+  const [excludeInput, setExcludeInput] = useState("")
 
   // Load saved config when dialog opens
   useEffect(() => {
@@ -38,6 +40,8 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       setSupabaseUrl(cfg.supabaseUrl)
       setSupabaseAnonKey(cfg.supabaseAnonKey)
       setWhisperModel(cfg.whisperModel ?? "tiny")
+      setTopWordExcludes(Array.isArray(cfg.topWordExcludes) ? cfg.topWordExcludes : [])
+      setExcludeInput("")
     }
   }, [open])
 
@@ -46,10 +50,25 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const canSave = mode === "local" || (urlValid && keyValid)
 
   function handleSave() {
-    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey, whisperModel }
+    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey, whisperModel, topWordExcludes }
     saveStorageConfig(config)
     onSave(config)
     onOpenChange(false)
+  }
+
+  function handleAddExcludeWord() {
+    const word = excludeInput.trim().toLowerCase()
+    if (!word) return
+    if (topWordExcludes.includes(word)) {
+      setExcludeInput("")
+      return
+    }
+    setTopWordExcludes((prev) => [...prev, word].sort())
+    setExcludeInput("")
+  }
+
+  function handleRemoveExcludeWord(word: string) {
+    setTopWordExcludes((prev) => prev.filter((w) => w !== word))
   }
 
   return (
@@ -166,6 +185,45 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
           <p className="text-[11px] text-muted-foreground">
             Base improves accuracy but uses more memory and can be slower.
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs">Top words exclude management</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Add word to exclude (e.g. trump)"
+              value={excludeInput}
+              onChange={(e) => setExcludeInput(e.target.value)}
+              className="h-8 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  handleAddExcludeWord()
+                }
+              }}
+            />
+            <Button type="button" variant="outline" className="h-8" onClick={handleAddExcludeWord}>
+              Add
+            </Button>
+          </div>
+          {topWordExcludes.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {topWordExcludes.map((word) => (
+                <button
+                  key={word}
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+                  onClick={() => handleRemoveExcludeWord(word)}
+                  title="Remove excluded word"
+                >
+                  <span>{word}</span>
+                  <span className="text-xs">x</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">No excluded words yet.</p>
+          )}
         </div>
 
         <DialogFooter className="gap-2">

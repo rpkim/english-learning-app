@@ -117,6 +117,29 @@ export function localDeleteConversationGroup(id: string): void {
   localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
 }
 
+export function localUpdateConversationGroupName(id: string, name: string): ConversationGroup | null {
+  const groups = localGetConversationGroups()
+  const idx = groups.findIndex((g) => g.id === id)
+  if (idx === -1) return null
+  const trimmed = name.trim()
+  if (!trimmed) return null
+  groups[idx] = { ...groups[idx], name: trimmed }
+  localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+  return groups[idx]
+}
+
+export function localMoveConversationToGroup(conversationId: string, targetGroupId: string | null): ConversationGroup[] {
+  const groups = localGetConversationGroups().map((g) => {
+    const filtered = g.conversation_ids.filter((cid) => cid !== conversationId)
+    if (targetGroupId && g.id === targetGroupId) {
+      return { ...g, conversation_ids: [...filtered, conversationId] }
+    }
+    return { ...g, conversation_ids: filtered }
+  })
+  localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+  return groups
+}
+
 // ── Vocabulary ───────────────────────────────────────────────
 
 export function localGetVocabulary(conversationId?: string): VocabularyItem[] {
