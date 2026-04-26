@@ -19,6 +19,12 @@ export interface TranscriptionDebugInfo {
   lastWorkerError: string | null
 }
 
+function isElectronDesktop() {
+  if (typeof window === "undefined") return false
+  const maybeDesktop = (window as Window & { desktop?: { isElectron?: boolean } }).desktop
+  return Boolean(maybeDesktop?.isElectron)
+}
+
 // Local type declarations for Web Speech API (not in all TS DOM libs)
 interface SpeechRecognitionInstance {
   continuous: boolean
@@ -380,12 +386,18 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
         })
         if (stream.getAudioTracks().length === 0) {
           stream.getTracks().forEach((t) => t.stop())
-          onErrorRef.current?.("No system audio track found. Re-share with tab/system audio enabled.")
-          setStatus("ready")
+          if (isElectronDesktop()) {
+            onErrorRef.current?.("No system audio track found. In Electron, choose Entire Screen with system audio enabled. Switched to microphone for now.")
+          } else {
+            onErrorRef.current?.("No system audio track found. Re-share with tab/system audio enabled.")
+            setStatus("ready")
+            return
+          }
+        }
+        if (stream.getAudioTracks().length > 0) {
+          startFromStream(stream, "system")
           return
         }
-        startFromStream(stream, "system")
-        return
       } catch (displayErr: unknown) {
         const msg = displayErr instanceof Error ? displayErr.message : String(displayErr)
         const isExplicitDeny = msg.toLowerCase().includes("permission denied") || msg.toLowerCase().includes("dismissed")

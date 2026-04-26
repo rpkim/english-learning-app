@@ -1,9 +1,51 @@
-const { app, BrowserWindow, ipcMain } = require("electron")
+const { app, BrowserWindow, ipcMain, desktopCapturer, session, systemPreferences } = require("electron")
 const path = require("path")
 
 const isDev = !app.isPackaged
 let mainWindow = null
 let normalBounds = { width: 1400, height: 920 }
+
+function setupMediaCaptureHandlers() {
+  const ses = session.defaultSession
+
+  ses.setDisplayMediaRequestHandler(
+    async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ["screen", "window"],
+          thumbnailSize: { width: 0, height: 0 },
+          fetchWindowIcons: false,
+        })
+        const source = sources[0]
+        if (!source) {
+          callback({ video: null, audio: null })
+          return
+        }
+        callback({
+          video: source,
+          audio: "loopback",
+        })
+      } catch (error) {
+        console.error("Display media handler error:", error)
+        callback({ video: null, audio: null })
+      }
+    },
+    { useSystemPicker: true }
+  )
+
+  ses.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === "media" || permission === "display-capture") {
+      callback(true)
+      return
+    }
+    callback(false)
+  })
+
+  ses.setPermissionCheckHandler((_webContents, permission) => {
+    if (permission === "media" || permission === "display-capture") return true
+    return false
+  })
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -53,6 +95,10 @@ ipcMain.handle("desktop:set-view-mode", (_event, mode) => {
 })
 
 app.whenReady().then(() => {
+  setupMediaCaptureHandlers()
+  if (process.platform === "darwin") {
+    systemPreferences.askForMediaAccess("microphone").catch(() => {})
+  }
   createWindow()
 
   app.on("activate", () => {

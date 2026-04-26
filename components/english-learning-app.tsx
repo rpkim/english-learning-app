@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Toaster } from "@/components/ui/sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { jsPDF } from "jspdf"
 import {
   BookOpen,
   Plus,
@@ -42,6 +43,7 @@ import {
   Minimize2,
   Maximize2,
   EyeOff,
+  FileDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getStorageConfig, saveStorageConfig, StorageConfig } from "@/lib/storage-config"
@@ -88,6 +90,7 @@ export function EnglishLearningApp() {
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
   const [isBatchTranslating, setIsBatchTranslating] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   // Manual add state
   const [showManualAdd, setShowManualAdd] = useState(false)
@@ -804,6 +807,89 @@ export function EnglishLearningApp() {
     }
   }, [vocabulary, isLocal, selectedConversationId])
 
+  const handleExportCsv = useCallback(() => {
+    if (filteredVocabulary.length === 0) {
+      toast.info("No vocabulary items to export in this scope")
+      return
+    }
+    const header = ["word", "type", "korean_translation", "definition", "example_sentence", "context", "is_mastered"]
+    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`
+    const rows = filteredVocabulary.map((item) => [
+      item.word,
+      item.type,
+      item.korean_translation ?? "",
+      item.definition ?? "",
+      item.example_sentence ?? "",
+      item.context ?? "",
+      item.is_mastered ? "true" : "false",
+    ])
+    const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n")
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `vocabulary-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success("CSV exported")
+  }, [filteredVocabulary])
+
+  const handleExportPdf = useCallback(async () => {
+    if (filteredVocabulary.length === 0) {
+      toast.info("No vocabulary items to export in this scope")
+      return
+    }
+    setIsExportingPdf(true)
+    try {
+      const doc = new jsPDF({ unit: "pt", format: "a4" })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 36
+      let y = margin
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(14)
+      doc.text("SurviveEnglish Vocabulary Export", margin, y)
+      y += 18
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(10)
+      doc.text(`Exported: ${new Date().toLocaleString()}`, margin, y)
+      y += 18
+
+      for (const item of filteredVocabulary) {
+        const lines = [
+          `${item.word} (${item.type})${item.is_mastered ? " [mastered]" : ""}`,
+          item.korean_translation ? `KR: ${item.korean_translation}` : "",
+          item.definition ? `Meaning: ${item.definition}` : "",
+          item.example_sentence ? `Example: ${item.example_sentence}` : "",
+          item.context ? `Context: ${item.context}` : "",
+        ].filter(Boolean)
+
+        for (const raw of lines) {
+          const wrapped = doc.splitTextToSize(raw, pageWidth - margin * 2)
+          for (const line of wrapped) {
+            if (y > pageHeight - margin) {
+              doc.addPage()
+              y = margin
+            }
+            doc.text(line, margin, y)
+            y += 14
+          }
+        }
+        y += 8
+      }
+
+      doc.save(`vocabulary-${new Date().toISOString().slice(0, 10)}.pdf`)
+      toast.success("PDF exported")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to export PDF"
+      toast.error(msg)
+    } finally {
+      setIsExportingPdf(false)
+    }
+  }, [filteredVocabulary])
+
   const handleStartWithSource = useCallback(async (source: AudioInputSource) => {
     setShowStartSourceDialog(false)
     if (startViewMode === "compact") {
@@ -1296,6 +1382,27 @@ export function EnglishLearningApp() {
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs gap-1"
+                    onClick={handleExportCsv}
+                    title="Export vocabulary as CSV"
+                  >
+                    <FileDown className="h-3.5 w-3.5" />
+                    CSV
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs gap-1"
+                    onClick={() => void handleExportPdf()}
+                    disabled={isExportingPdf}
+                    title="Export vocabulary as PDF"
+                  >
+                    {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+                    PDF
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
