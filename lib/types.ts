@@ -11,7 +11,7 @@ export interface VocabularyItem {
   id: string
   conversation_id: string | null
   word: string
-  type: "word" | "idiom" | "phrasal_verb" | "expression"
+  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression"
   definition: string | null
   example_sentence: string | null
   korean_translation: string | null
@@ -22,7 +22,7 @@ export interface VocabularyItem {
 
 export interface ExtractedItem {
   word: string
-  type: "word" | "idiom" | "phrasal_verb" | "expression"
+  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression"
   definition: string
   example_sentence: string
   context: string
@@ -33,4 +33,5 @@ export interface ConversationGroup {
   name: string
   conversation_ids: string[]
   created_at: string
+  archived_at?: string | null
 }

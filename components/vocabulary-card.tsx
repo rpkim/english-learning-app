@@ -11,11 +11,13 @@ import { cn } from "@/lib/utils"
 const TYPE_COLORS: Record<string, string> = {
   word: "bg-primary/10 text-primary border-primary/20",
   idiom: "bg-accent/10 text-accent-foreground border-accent/20",
+  slang: "bg-orange-500/10 text-orange-700 border-orange-300",
 }
 
 const TYPE_LABELS: Record<string, string> = {
   word: "Word",
   idiom: "Idiom",
+  slang: "Slang",
 }
 
 interface VocabularyCardProps {
@@ -129,10 +131,16 @@ export function VocabularyCard({
 
       {expanded && (
         <CardContent className="px-1.5 pb-0 pt-0 space-y-0.5 border-t border-border mt-0">
+          {item.definition && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Meaning</p>
+              <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{item.definition}</p>
+            </div>
+          )}
           {item.example_sentence && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Example</p>
-              <p className="text-xs text-foreground italic leading-relaxed">&ldquo;{item.example_sentence}&rdquo;</p>
+              <p className="text-xs text-foreground italic leading-relaxed whitespace-pre-line">&ldquo;{item.example_sentence}&rdquo;</p>
             </div>
           )}
           {item.context && (

@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDistanceToNow } from "date-fns"
-import { Clock, FileText, ChevronRight, Pencil, Trash2, FolderPlus, FolderPen } from "lucide-react"
+import { Clock, FileText, ChevronRight, Pencil, Trash2, FolderPlus, FolderPen, Archive, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMemo, useState } from "react"
 
@@ -20,8 +20,11 @@ interface ConversationHistoryProps {
   onCreateGroup: (name: string) => void | Promise<void>
   onRenameGroup: (groupId: string, nextName: string) => void | Promise<void>
   onDeleteGroup: (groupId: string) => void | Promise<void>
+  onArchiveGroup: (groupId: string) => void | Promise<void>
+  onRestoreGroup: (groupId: string) => void | Promise<void>
   onSelectGroup: (groupId: string | null) => void
   onMoveConversationToGroup: (conversationId: string, groupId: string | null) => void | Promise<void>
+  workspaceStats: Record<string, { totalWords: number; masteredWords: number }>
 }
 
 function formatDuration(seconds: number) {
@@ -43,8 +46,11 @@ export function ConversationHistory({
   onCreateGroup,
   onRenameGroup,
   onDeleteGroup,
+  onArchiveGroup,
+  onRestoreGroup,
   onSelectGroup,
   onMoveConversationToGroup,
+  workspaceStats,
 }: ConversationHistoryProps) {
   const [draggingConversationId, setDraggingConversationId] = useState<string | null>(null)
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
@@ -59,11 +65,15 @@ export function ConversationHistory({
   )
   const groupedSections = useMemo(
     () =>
-      groups.map((g) => {
+      groups.filter((g) => !g.archived_at).map((g) => {
         const set = new Set(g.conversation_ids)
         return { group: g, conversations: conversations.filter((c) => set.has(c.id)) }
       }),
     [groups, conversations]
+  )
+  const archivedGroups = useMemo(
+    () => groups.filter((g) => Boolean(g.archived_at)),
+    [groups]
   )
 
   const handleCreateGroup = async () => {
@@ -142,6 +152,9 @@ export function ConversationHistory({
               void onRenameGroup(group.id, trimmed)
             }}
             onDelete={() => void onDeleteGroup(group.id)}
+            onArchive={() => void onArchiveGroup(group.id)}
+            totalWords={workspaceStats[group.id]?.totalWords ?? 0}
+            masteredWords={workspaceStats[group.id]?.masteredWords ?? 0}
             onDragOver={(e) => {
               if (!draggingConversationId) return
               e.preventDefault()
@@ -162,6 +175,31 @@ export function ConversationHistory({
             {inGroup.map((conv) => renderRow(conv))}
           </Section>
         ))}
+
+        {archivedGroups.length > 0 && (
+          <div className="rounded-lg border px-2 py-1 border-border/60">
+            <div className="flex items-center justify-between px-1 py-1">
+              <div className="text-sm font-medium text-muted-foreground">Archived</div>
+              <Badge variant="outline" className="h-4 px-1 text-[10px]">{archivedGroups.length}</Badge>
+            </div>
+            <div className="ml-1 mt-1 flex flex-col gap-1">
+              {archivedGroups.map((group) => (
+                <div key={group.id} className="flex items-center justify-between rounded-md border border-border/70 px-2 py-1">
+                  <span className="text-xs text-muted-foreground truncate">{group.name}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => void onRestoreGroup(group.id)}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Restore
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </ScrollArea>
   )
@@ -262,6 +300,9 @@ interface SectionProps {
   onSelect: () => void
   onRename?: () => void
   onDelete?: () => void
+  onArchive?: () => void
+  totalWords?: number
+  masteredWords?: number
   onDragOver: (e: React.DragEvent<HTMLDivElement>) => void
   onDragLeave: () => void
   onDrop: (e: React.DragEvent<HTMLDivElement>) => void
@@ -276,6 +317,9 @@ function Section({
   onSelect,
   onRename,
   onDelete,
+  onArchive,
+  totalWords = 0,
+  masteredWords = 0,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -296,6 +340,8 @@ function Section({
         <div className="text-sm">{title}</div>
         <div className="flex items-center gap-1">
           <Badge variant="outline" className="h-4 px-1 text-[10px]">{count}</Badge>
+          <Badge variant="outline" className="h-4 px-1 text-[10px]">Words {totalWords}</Badge>
+          <Badge variant="outline" className="h-4 px-1 text-[10px]">Mastered {masteredWords}</Badge>
           {onRename && (
             <Button
               size="icon"
@@ -311,6 +357,21 @@ function Section({
             </Button>
           )}
           {onDelete && (
+            <>
+              {onArchive && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onArchive()
+                  }}
+                  title="Archive workspace"
+                >
+                  <Archive className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              )}
             <Button
               size="icon"
               variant="ghost"
@@ -323,6 +384,7 @@ function Section({
             >
               <Trash2 className="h-3 w-3 text-muted-foreground" />
             </Button>
+            </>
           )}
         </div>
       </div>

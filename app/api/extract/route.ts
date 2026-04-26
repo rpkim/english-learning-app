@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 
 type ExtractedItem = {
   word: string
-  type: "word" | "idiom" | "phrasal_verb" | "expression"
+  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression"
   definition: string
   example_sentence: string
   context: string
@@ -23,6 +23,9 @@ function fallbackExtract(transcript: string): ExtractedItem[] {
     { phrase: "find out", type: "phrasal_verb", definition: "to discover information" },
     { phrase: "come up with", type: "phrasal_verb", definition: "to think of an idea or plan" },
     { phrase: "at the end of the day", type: "idiom", definition: "when everything is considered" },
+    { phrase: "gonna", type: "slang", definition: "informal spoken form of 'going to'" },
+    { phrase: "wanna", type: "slang", definition: "informal spoken form of 'want to'" },
+    { phrase: "ain't", type: "slang", definition: "very informal nonstandard form of 'is not/are not/am not'" },
   ]
 
   for (const seed of seedPhrases) {
@@ -79,18 +82,23 @@ export async function POST(request: Request) {
 Extract:
 1. Difficult or advanced words
 2. Idioms (e.g. "kick the bucket", "on the fence")
-3. Phrasal verbs (e.g. "give up", "look into")
-4. Common expressions and collocations
+3. Slang / colloquial spoken forms (e.g. "gonna", "wanna", "ain't")
+4. Phrasal verbs (e.g. "give up", "look into")
+5. Common expressions and collocations
 
 For each item, provide:
 - word: the word, idiom, or phrase exactly as used
-- type: one of "word", "idiom", "phrasal_verb", "expression"
-- definition: clear English definition
-- example_sentence: an example sentence using this item
+- type: one of "word", "idiom", "slang", "phrasal_verb", "expression"
+- definition: include BOTH:
+  - "Context meaning: ..." (meaning in the exact transcript context)
+  - "Other meanings/usages: ..." (other common senses/usages if applicable)
+- example_sentence: include BOTH:
+  - first sentence should be taken from transcript (or nearest spoken line)
+  - second sentence should be a new additional example sentence
 - context: the exact sentence from the transcript where it appeared (or nearest context)
 
 Return ONLY a valid JSON array with no markdown, no code fences, no extra text. Example format:
-[{"word":"kick the bucket","type":"idiom","definition":"to die","example_sentence":"He finally kicked the bucket after a long illness.","context":"..."}]
+[{"word":"kick the bucket","type":"idiom","definition":"Context meaning: to die in this sentence. Other meanings/usages: fixed idiom, often humorous.","example_sentence":"Transcript: He said he might kick the bucket soon. Additional: The old car finally kicked the bucket.","context":"..."}]
 
 Transcript:
 ${transcript}`

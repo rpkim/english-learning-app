@@ -55,6 +55,8 @@ import {
   localCreateConversationGroup,
   localUpdateConversationGroupName,
   localDeleteConversationGroup,
+  localArchiveConversationGroup,
+  localRestoreConversationGroup,
   localMoveConversationToGroup,
   localGetVocabulary,
   localCreateVocabularyItem,
@@ -81,7 +83,7 @@ export function EnglishLearningApp() {
 
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
-  const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "idiom">("all")
+  const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "idiom" | "slang">("all")
   const [vocabView, setVocabView] = useState<"items" | "frequency">("items")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
@@ -509,6 +511,21 @@ export function EnglishLearningApp() {
     toast.success("Group deleted")
   }, [selectedGroupId])
 
+  const handleArchiveGroup = useCallback(async (groupId: string) => {
+    const updated = localArchiveConversationGroup(groupId)
+    if (!updated) return
+    setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
+    if (selectedGroupId === groupId) setSelectedGroupId(null)
+    toast.success("Workspace archived")
+  }, [selectedGroupId])
+
+  const handleRestoreGroup = useCallback(async (groupId: string) => {
+    const updated = localRestoreConversationGroup(groupId)
+    if (!updated) return
+    setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
+    toast.success("Workspace restored")
+  }, [])
+
   const handleRenameGroup = useCallback(async (groupId: string, nextName: string) => {
     const name = nextName.trim()
     if (!name) return
@@ -672,11 +689,13 @@ export function EnglishLearningApp() {
 
   const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
   const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
-  const idiomCount = scopedVocabulary.length - wordCount
+  const idiomCount = scopedVocabulary.filter((v) => v.type === "idiom").length
+  const slangCount = scopedVocabulary.filter((v) => v.type === "slang").length
   const filteredVocabulary = scopedVocabulary.filter((item) => {
     if (vocabFilter === "all") return true
     if (vocabFilter === "word") return item.type === "word"
-    return item.type !== "word"
+    if (vocabFilter === "idiom") return item.type === "idiom"
+    return item.type === "slang"
   })
 
   const scopeConversations = useMemo(() => {
@@ -692,6 +711,19 @@ export function EnglishLearningApp() {
     }
     return conversations
   }, [conversations, selectedConversationId, activeGroupConversationIds, selectedGroupId, conversationGroups])
+
+  const workspaceStats = useMemo(() => {
+    const stats: Record<string, { totalWords: number; masteredWords: number }> = {}
+    for (const group of conversationGroups) {
+      const ids = new Set(group.conversation_ids)
+      const words = vocabulary.filter((v) => v.conversation_id && ids.has(v.conversation_id))
+      stats[group.id] = {
+        totalWords: words.length,
+        masteredWords: words.filter((w) => w.is_mastered).length,
+      }
+    }
+    return stats
+  }, [conversationGroups, vocabulary])
 
   const frequentWords = useMemo(() => {
     const excluded = new Set((storageConfig.topWordExcludes ?? []).map((w) => w.toLowerCase()))
@@ -885,7 +917,7 @@ export function EnglishLearningApp() {
     <div
       className={cn(
         "flex flex-col h-screen bg-background text-foreground transition-[padding] duration-200",
-        isRecording && audioSource === "system" ? "pt-10" : "pt-0"
+        isRecording && audioSource === "system" ? "pt-14" : "pt-0"
       )}
     >
       {/* Header */}
@@ -974,7 +1006,7 @@ export function EnglishLearningApp() {
         {!leftCollapsed && (
         <div className={cn("flex flex-col min-w-0 border-r border-border p-4 gap-3 transition-all", leftPanelClass)}>
           {/* Controls */}
-          <div className="flex items-center justify-between flex-wrap gap-2 shrink-0">
+          <div className="flex items-center justify-between flex-wrap gap-2 shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 py-1">
             <div className="flex items-center gap-2">
               <RecordingControls
                 isRecording={isRecording}
@@ -1240,6 +1272,14 @@ export function EnglishLearningApp() {
                     >
                       Idioms {idiomCount}
                     </Button>
+                    <Button
+                      variant={vocabFilter === "slang" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setVocabFilter("slang")}
+                    >
+                      Slang {slangCount}
+                    </Button>
                   </div>
                   {selectedConversationId && (
                     <Button
@@ -1364,8 +1404,11 @@ export function EnglishLearningApp() {
                   onCreateGroup={handleCreateGroup}
                   onRenameGroup={handleRenameGroup}
                   onDeleteGroup={handleDeleteGroup}
+                  onArchiveGroup={handleArchiveGroup}
+                  onRestoreGroup={handleRestoreGroup}
                   onSelectGroup={handleSelectGroup}
                   onMoveConversationToGroup={handleMoveConversationToGroup}
+                  workspaceStats={workspaceStats}
                 />
               </div>
             </TabsContent>
@@ -1455,5 +1498,6 @@ export function EnglishLearningApp() {
 }
 
 function normalizeVocabType(type: VocabularyItem["type"]): VocabularyItem["type"] {
-  return type === "word" ? "word" : "idiom"
+  if (type === "word" || type === "idiom" || type === "slang") return type
+  return "idiom"
 }
