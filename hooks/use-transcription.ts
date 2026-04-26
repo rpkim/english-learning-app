@@ -9,6 +9,14 @@ export type TranscriptionStatus =
   | "recording"
   | "error"
 
+export interface TranscriptionDebugInfo {
+  framesCaptured: number
+  chunksSent: number
+  audioLevel: number
+  workerState: "idle" | "loading" | "ready" | "error"
+  lastWorkerError: string | null
+}
+
 // Local type declarations for Web Speech API (not in all TS DOM libs)
 interface SpeechRecognitionInstance {
   continuous: boolean
@@ -39,6 +47,14 @@ interface UseTranscriptionOptions {
   onError?: (msg: string) => void
 }
 
+const TARGET_SAMPLE_RATE = 16000
+
+function hasWebSpeechSupport() {
+  if (typeof window === "undefined") return false
+  const win = window as AnyWindow
+  return Boolean(win.SpeechRecognition || win.webkitSpeechRecognition)
+}
+
 /**
  * useTranscription — captures computer audio output via getDisplayMedia
  * and transcribes using Whisper Tiny (local, open-source) via a Web Worker.
@@ -54,20 +70,39 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
   const [duration, setDuration] = useState(0)
   const [useWebSpeech, setUseWebSpeech] = useState(false)
   const [audioSource, setAudioSource] = useState<"system" | "microphone" | null>(null)
+  const [debugInfo, setDebugInfo] = useState<TranscriptionDebugInfo>({
+    framesCaptured: 0,
+    chunksSent: 0,
+    audioLevel: 0,
+    workerState: "idle",
+    lastWorkerError: null,
+  })
 
   const workerRef = useRef<Worker | null>(null)
+  const onTranscriptRef = useRef(onTranscript)
+  const onErrorRef = useRef(onError)
   const streamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioBufferRef = useRef<Float32Array[]>([])
+  const inputSampleRateRef = useRef(16000)
+  const startedAtRef = useRef<number>(0)
+  const audioFrameCountRef = useRef(0)
+  const noAudioWarnTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isRecordingRef = useRef(false)
   const chunkIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const workerReadyRef = useRef(false)
   // Ref to stable stop fn to avoid circular useCallback deps
   const stopRef = useRef<() => void>(() => {})
 
   const isRecording = status === "recording"
+
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript
+    onErrorRef.current = onError
+  }, [onTranscript, onError])
 
   // Initialize the Whisper Web Worker
   const initWorker = useCallback(() => {
@@ -77,41 +112,61 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       worker.onmessage = (e) => {
         const { type, message, progress, file, text } = e.data
         if (type === "loading") {
+          workerReadyRef.current = false
+          setDebugInfo((prev) => ({ ...prev, workerState: "loading" }))
           setStatus("loading_model")
         } else if (type === "loading_progress") {
           setLoadingProgress(progress ?? 0)
           setLoadingFile(file ?? "")
         } else if (type === "ready") {
+          workerReadyRef.current = true
+          setDebugInfo((prev) => ({ ...prev, workerState: "ready", lastWorkerError: null }))
           setStatus("ready")
         } else if (type === "result" && text) {
           const clean = text.trim()
           if (clean && clean !== "[BLANK_AUDIO]") {
-            setTranscript((prev) => prev + (prev ? " " : "") + clean)
+            setTranscript((prev) => appendNonDuplicateTranscript(prev, clean))
             setInterimTranscript("")
-            onTranscript?.(clean)
+            onTranscriptRef.current?.(clean)
           }
         } else if (type === "error") {
-          onError?.(message)
+          setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: message ?? "Unknown worker error" }))
+          onErrorRef.current?.(message)
         }
       }
       worker.onerror = () => {
-        setUseWebSpeech(true)
+        workerReadyRef.current = false
+        setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: "Worker runtime error" }))
+        if (hasWebSpeechSupport()) {
+          setUseWebSpeech(true)
+        } else {
+          setStatus("error")
+          onErrorRef.current?.("Real-time transcription is not supported in this browser. Please use latest Chrome.")
+          return
+        }
         setStatus("ready")
       }
       workerRef.current = worker
       worker.postMessage({ type: "load" })
     } catch {
-      setUseWebSpeech(true)
+      workerReadyRef.current = false
+      if (hasWebSpeechSupport()) {
+        setUseWebSpeech(true)
+      } else {
+        setStatus("error")
+        onErrorRef.current?.("Real-time transcription is not supported in this browser. Please use latest Chrome.")
+        return
+      }
       setStatus("ready")
     }
-  }, [onTranscript, onError])
+  }, [])
 
   // Web Speech API fallback
   const startWebSpeech = useCallback((stream: MediaStream) => {
     const win = window as AnyWindow
     const SR = win.SpeechRecognition || win.webkitSpeechRecognition
     if (!SR) {
-      onError?.("Speech recognition not supported in this browser.")
+      onErrorRef.current?.("Speech recognition not supported in this browser.")
       setStatus("error")
       return
     }
@@ -128,7 +183,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
           const text = res[0].transcript
           setTranscript((prev) => prev + (prev ? " " : "") + text.trim())
           setInterimTranscript("")
-          onTranscript?.(text.trim())
+          onTranscriptRef.current?.(text.trim())
         } else {
           interim += res[0].transcript
         }
@@ -136,17 +191,19 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       setInterimTranscript(interim)
     }
     recognition.onerror = (e: SpeechRecognitionErrorEventLocal) => {
-      if (e.error !== "aborted") onError?.(`Speech recognition error: ${e.error}`)
+      if (e.error !== "aborted") onErrorRef.current?.(`Speech recognition error: ${e.error}`)
     }
     recognition.start()
     recognitionRef.current = recognition
     // keep stream alive (not used directly but prevents GC)
     streamRef.current = stream
-  }, [onTranscript, onError])
+  }, [])
 
   // Process accumulated audio buffer through Whisper
   const processAudioChunk = useCallback(() => {
     if (!workerRef.current || audioBufferRef.current.length === 0) return
+    // Don't flush buffered audio until the Whisper model is ready.
+    if (!workerReadyRef.current) return
     const totalLength = audioBufferRef.current.reduce((sum, buf) => sum + buf.length, 0)
     const combined = new Float32Array(totalLength)
     let offset = 0
@@ -155,7 +212,19 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       offset += buf.length
     }
     audioBufferRef.current = []
-    workerRef.current.postMessage({ type: "transcribe", audio: combined }, [combined.buffer])
+
+    const inputRate = inputSampleRateRef.current
+    // Whisper works best with 16kHz mono PCM input.
+    const preparedAudio =
+      inputRate === TARGET_SAMPLE_RATE
+        ? combined
+        : downsampleTo16kHz(combined, inputRate)
+
+    workerRef.current.postMessage(
+      { type: "transcribe", audio: preparedAudio, samplingRate: TARGET_SAMPLE_RATE },
+      [preparedAudio.buffer]
+    )
+    setDebugInfo((prev) => ({ ...prev, chunksSent: prev.chunksSent + 1 }))
   }, [])
 
   /** Core recording setup once we have a MediaStream */
@@ -163,7 +232,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     (stream: MediaStream, source: "system" | "microphone") => {
       const audioTracks = stream.getAudioTracks()
       if (audioTracks.length === 0) {
-        onError?.("No audio track found. Make sure to check 'Share system audio' when sharing your screen.")
+        onErrorRef.current?.("No audio track found. Make sure to check 'Share system audio' when sharing your screen.")
         setStatus("ready")
         stream.getTracks().forEach((t) => t.stop())
         return
@@ -173,8 +242,27 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       isRecordingRef.current = true
       setAudioSource(source)
       setDuration(0)
-      timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000)
+      startedAtRef.current = Date.now()
+      timerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000)
+        setDuration(elapsed)
+      }, 250)
       setStatus("recording")
+      audioFrameCountRef.current = 0
+      setDebugInfo((prev) => ({
+        ...prev,
+        framesCaptured: 0,
+        chunksSent: 0,
+        audioLevel: 0,
+        lastWorkerError: null,
+      }))
+
+      if (noAudioWarnTimeoutRef.current) clearTimeout(noAudioWarnTimeoutRef.current)
+      noAudioWarnTimeoutRef.current = setTimeout(() => {
+        if (isRecordingRef.current && audioFrameCountRef.current === 0) {
+          onErrorRef.current?.("Audio signal not detected from the shared source. Try re-sharing the tab with tab audio enabled.")
+        }
+      }, 3000)
 
       if (useWebSpeech) {
         startWebSpeech(stream)
@@ -182,21 +270,61 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       }
 
       // Set up AudioContext → ScriptProcessor → Whisper worker
-      const audioCtx = new AudioContext({ sampleRate: 16000 })
+      const audioCtx = new AudioContext()
       audioContextRef.current = audioCtx
+      inputSampleRateRef.current = audioCtx.sampleRate
       const audioOnlyStream = new MediaStream(audioTracks)
       const sourceNode = audioCtx.createMediaStreamSource(audioOnlyStream)
-      const processor = audioCtx.createScriptProcessor(4096, 1, 1)
+      const processor = audioCtx.createScriptProcessor(4096, 2, 1)
       processorRef.current = processor
+      const silentGain = audioCtx.createGain()
+      silentGain.gain.value = 0
 
       processor.onaudioprocess = (e) => {
         if (!isRecordingRef.current) return
-        audioBufferRef.current.push(new Float32Array(e.inputBuffer.getChannelData(0)))
+        audioFrameCountRef.current += e.inputBuffer.length
+        const input = e.inputBuffer
+        const channels = input.numberOfChannels
+        const frames = input.length
+        const mono = new Float32Array(frames)
+
+        if (channels <= 1) {
+          mono.set(input.getChannelData(0))
+        } else {
+          // Mix all input channels to mono for stable ASR input.
+          for (let ch = 0; ch < channels; ch++) {
+            const channelData = input.getChannelData(ch)
+            for (let i = 0; i < frames; i++) {
+              mono[i] += channelData[i]
+            }
+          }
+          for (let i = 0; i < frames; i++) {
+            mono[i] /= channels
+          }
+        }
+
+        let peak = 0
+        for (let i = 0; i < frames; i++) {
+          const abs = Math.abs(mono[i])
+          if (abs > peak) peak = abs
+        }
+        setDebugInfo((prev) => ({
+          ...prev,
+          framesCaptured: audioFrameCountRef.current,
+          audioLevel: peak,
+        }))
+
+        audioBufferRef.current.push(mono)
       }
 
       sourceNode.connect(processor)
-      processor.connect(audioCtx.destination)
-      chunkIntervalRef.current = setInterval(processAudioChunk, 5000)
+      processor.connect(silentGain)
+      silentGain.connect(audioCtx.destination)
+
+      // Some browsers start AudioContext in "suspended" state even after
+      // permission prompts; resuming here ensures onaudioprocess actually fires.
+      void audioCtx.resume().catch(() => {})
+      chunkIntervalRef.current = setInterval(processAudioChunk, 1000)
 
       // Stop when user ends screen share from browser UI
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
@@ -207,11 +335,19 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
         if (isRecordingRef.current) stopRef.current()
       })
     },
-    [useWebSpeech, startWebSpeech, processAudioChunk, onError, stopRef]
+    [useWebSpeech, startWebSpeech, processAudioChunk, stopRef]
   )
 
   const start = useCallback(async () => {
-    setStatus("loading_model")
+    if (!navigator.mediaDevices?.getDisplayMedia || !navigator.mediaDevices?.getUserMedia) {
+      onErrorRef.current?.("Media capture is not supported in this browser. Please use latest Chrome.")
+      setStatus("error")
+      return
+    }
+
+    if (!useWebSpeech && !workerReadyRef.current) {
+      setStatus("loading_model")
+    }
     // 1) Try system audio capture via getDisplayMedia
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -222,10 +358,17 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
           sampleRate: 16000,
         },
       })
+      // Some browsers return a display stream without audio if the user
+      // doesn't enable "Share system audio". In that case, fall back to mic.
+      if (stream.getAudioTracks().length === 0) {
+        stream.getTracks().forEach((t) => t.stop())
+        throw new Error("NO_SYSTEM_AUDIO_TRACK")
+      }
       startFromStream(stream, "system")
       return
     } catch (displayErr: unknown) {
       const msg = displayErr instanceof Error ? displayErr.message : String(displayErr)
+      const isNoAudioTrack = msg.includes("NO_SYSTEM_AUDIO_TRACK")
       const isPermissionsPolicyError =
         msg.toLowerCase().includes("permissions policy") ||
         msg.toLowerCase().includes("disallowed") ||
@@ -235,14 +378,16 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
 
       if (isExplicitDeny) {
         // User actively cancelled the screen picker — don't fall back silently
-        onError?.("Screen share cancelled. Click Start to try again.")
+        onErrorRef.current?.("Screen share cancelled. Click Start to try again.")
         setStatus("ready")
         return
       }
 
-      if (!isPermissionsPolicyError) {
+      if (isNoAudioTrack) {
+        onErrorRef.current?.("System audio was not shared. Switched to microphone input.")
+      } else if (!isPermissionsPolicyError) {
         // Unexpected error — surface it
-        onError?.(msg)
+        onErrorRef.current?.(msg)
         setStatus("ready")
         return
       }
@@ -263,14 +408,14 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       startFromStream(stream, "microphone")
     } catch (micErr: unknown) {
       const msg = micErr instanceof Error ? micErr.message : String(micErr)
-      onError?.(
+      onErrorRef.current?.(
         msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")
           ? "Microphone permission denied. Please allow microphone access and try again."
           : msg
       )
       setStatus("ready")
     }
-  }, [startFromStream, onError])
+  }, [startFromStream, useWebSpeech])
 
   const stop: () => void = useCallback(() => {
     isRecordingRef.current = false
@@ -281,6 +426,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     // Stop timer
     if (timerRef.current) clearInterval(timerRef.current)
     if (chunkIntervalRef.current) clearInterval(chunkIntervalRef.current)
+    if (noAudioWarnTimeoutRef.current) clearTimeout(noAudioWarnTimeoutRef.current)
 
     // Stop stream
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -322,8 +468,11 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     }
     return () => {
       workerRef.current?.terminate()
+      workerRef.current = null
+      workerReadyRef.current = false
       if (timerRef.current) clearInterval(timerRef.current)
       if (chunkIntervalRef.current) clearInterval(chunkIntervalRef.current)
+      if (noAudioWarnTimeoutRef.current) clearTimeout(noAudioWarnTimeoutRef.current)
     }
   }, [initWorker])
 
@@ -336,9 +485,88 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     isRecording,
     duration,
     audioSource,
+    debugInfo,
     start,
     stop,
     reset,
     setTranscript,
   }
+}
+
+function downsampleTo16kHz(buffer: Float32Array, inputSampleRate: number) {
+  if (!Number.isFinite(inputSampleRate) || inputSampleRate <= TARGET_SAMPLE_RATE) {
+    return buffer
+  }
+
+  const ratio = inputSampleRate / TARGET_SAMPLE_RATE
+  const newLength = Math.max(1, Math.round(buffer.length / ratio))
+  const output = new Float32Array(newLength)
+
+  let inIndex = 0
+  for (let outIndex = 0; outIndex < newLength; outIndex++) {
+    const nextInIndex = Math.round((outIndex + 1) * ratio)
+    let sum = 0
+    let count = 0
+    for (let i = inIndex; i < nextInIndex && i < buffer.length; i++) {
+      sum += buffer[i]
+      count++
+    }
+    output[outIndex] = count > 0 ? sum / count : 0
+    inIndex = nextInIndex
+  }
+
+  return normalizeAudio(output)
+}
+
+function normalizeAudio(buffer: Float32Array) {
+  let sumSquares = 0
+  for (let i = 0; i < buffer.length; i++) {
+    sumSquares += buffer[i] * buffer[i]
+  }
+  const rms = Math.sqrt(sumSquares / Math.max(1, buffer.length))
+  if (!Number.isFinite(rms) || rms < 1e-4) return buffer
+
+  const targetRms = 0.08
+  const gain = Math.min(8, targetRms / rms)
+  if (gain <= 1.05) return buffer
+
+  const normalized = new Float32Array(buffer.length)
+  for (let i = 0; i < buffer.length; i++) {
+    const v = buffer[i] * gain
+    normalized[i] = Math.max(-1, Math.min(1, v))
+  }
+  return normalized
+}
+
+function appendNonDuplicateTranscript(previous: string, incoming: string) {
+  const prev = previous.trim()
+  const next = incoming.trim()
+  if (!next) return previous
+  if (!prev) return next
+
+  const prevLower = prev.toLowerCase()
+  const nextLower = next.toLowerCase()
+
+  // Drop exact duplicate chunks.
+  if (prevLower.endsWith(nextLower)) return previous
+
+  // If incoming starts with tail of previous, append only non-overlapping suffix.
+  const maxOverlap = Math.min(nextLower.length, 80)
+  for (let overlap = maxOverlap; overlap >= 12; overlap--) {
+    const prevTail = prevLower.slice(-overlap)
+    const nextHead = nextLower.slice(0, overlap)
+    if (prevTail === nextHead) {
+      return `${previous} ${next.slice(overlap).trim()}`.trim()
+    }
+  }
+
+  // Guard against repetitive short phrase spam (e.g., "a little bit of" loop).
+  const shortPhrase = nextLower.split(/\s+/).slice(0, 6).join(" ").trim()
+  if (shortPhrase.length >= 8) {
+    const tail = prevLower.slice(-300)
+    const count = tail.split(shortPhrase).length - 1
+    if (count >= 3) return previous
+  }
+
+  return `${previous} ${next}`.trim()
 }

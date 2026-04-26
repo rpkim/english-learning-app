@@ -40,14 +40,9 @@ import {
 
 export function EnglishLearningApp() {
   // Storage config
-  const [storageConfig, setStorageConfig] = useState<StorageConfig>({ mode: "supabase", supabaseUrl: "", supabaseAnonKey: "" })
+  const [storageConfig, setStorageConfig] = useState<StorageConfig>(() => getStorageConfig())
   const [showConfig, setShowConfig] = useState(false)
   const isLocal = storageConfig.mode === "local"
-
-  // Load storage config on mount
-  useEffect(() => {
-    setStorageConfig(getStorageConfig())
-  }, [])
 
   // Transcription state
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
@@ -56,6 +51,7 @@ export function EnglishLearningApp() {
 
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
+  const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "idiom">("all")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
 
@@ -69,7 +65,7 @@ export function EnglishLearningApp() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
 
   // Transcription hook
-  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, start, stop, reset, setTranscript } =
+  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, start, stop, reset, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
     })
@@ -147,7 +143,14 @@ export function EnglishLearningApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript }),
       })
-      if (!extractRes.ok) throw new Error("Extraction failed")
+      if (!extractRes.ok) {
+        let message = "Extraction failed"
+        try {
+          const body = await extractRes.json()
+          if (typeof body?.error === "string" && body.error) message = body.error
+        } catch {}
+        throw new Error(message)
+      }
       const { items }: { items: ExtractedItem[] } = await extractRes.json()
 
       if (items.length === 0) {
@@ -160,7 +163,7 @@ export function EnglishLearningApp() {
             localCreateVocabularyItem({
               conversation_id: savedConv.id,
               word: item.word,
-              type: item.type,
+              type: normalizeVocabType(item.type),
               definition: item.definition,
               example_sentence: item.example_sentence,
               context: item.context,
@@ -175,7 +178,7 @@ export function EnglishLearningApp() {
               body: JSON.stringify({
                 conversation_id: savedConv.id,
                 word: item.word,
-                type: item.type,
+                type: normalizeVocabType(item.type),
                 definition: item.definition,
                 example_sentence: item.example_sentence,
                 context: item.context,
@@ -209,7 +212,7 @@ export function EnglishLearningApp() {
           saved = localCreateVocabularyItem({
             conversation_id: currentConversationId,
             word: item.word,
-            type: item.type as VocabularyItem["type"],
+            type: normalizeVocabType(item.type as VocabularyItem["type"]),
             definition: item.definition,
             example_sentence: null,
             context: item.context,
@@ -219,7 +222,11 @@ export function EnglishLearningApp() {
           const res = await fetch("/api/vocabulary", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ conversation_id: currentConversationId, ...item }),
+            body: JSON.stringify({
+              conversation_id: currentConversationId,
+              ...item,
+              type: normalizeVocabType(item.type as VocabularyItem["type"]),
+            }),
           })
           if (!res.ok) throw new Error("Failed to add item")
           saved = await res.json()
@@ -330,6 +337,13 @@ export function EnglishLearningApp() {
   }, [setTranscript, isLocal])
 
   const masteredCount = vocabulary.filter((v) => v.is_mastered).length
+  const wordCount = vocabulary.filter((v) => v.type === "word").length
+  const idiomCount = vocabulary.length - wordCount
+  const filteredVocabulary = vocabulary.filter((item) => {
+    if (vocabFilter === "all") return true
+    if (vocabFilter === "word") return item.type === "word"
+    return item.type !== "word"
+  })
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -398,7 +412,7 @@ export function EnglishLearningApp() {
             <div className="flex items-center gap-2">
               <RecordingControls
                 isRecording={isRecording}
-                isLoading={status === "loading_model"}
+                isLoading={status === "loading_model" && !isRecording}
                 isSaving={isSaving}
                 isExtracting={isExtracting}
                 duration={duration}
@@ -440,6 +454,12 @@ export function EnglishLearningApp() {
             isRecording={isRecording}
             onTextSelect={handleTextSelect}
           />
+          {isRecording && (
+            <p className="text-[11px] text-muted-foreground font-mono">
+              dbg frames:{debugInfo.framesCaptured} chunks:{debugInfo.chunksSent} level:{debugInfo.audioLevel.toFixed(4)} worker:{debugInfo.workerState}
+              {debugInfo.lastWorkerError ? ` err:${debugInfo.lastWorkerError}` : ""}
+            </p>
+          )}
 
           {/* Manual add form (shown when text selected) */}
           {showManualAdd && (
@@ -483,10 +503,36 @@ export function EnglishLearningApp() {
             {/* Vocabulary tab */}
             <TabsContent value="vocabulary" className="flex-1 flex flex-col min-h-0 m-0 p-0">
               <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-xs font-medium text-muted-foreground">
                     {selectedConversationId ? "This session" : "All items"}
                   </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={vocabFilter === "all" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setVocabFilter("all")}
+                    >
+                      All {vocabulary.length}
+                    </Button>
+                    <Button
+                      variant={vocabFilter === "word" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setVocabFilter("word")}
+                    >
+                      Words {wordCount}
+                    </Button>
+                    <Button
+                      variant={vocabFilter === "idiom" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setVocabFilter("idiom")}
+                    >
+                      Idioms {idiomCount}
+                    </Button>
+                  </div>
                   {selectedConversationId && (
                     <Button
                       variant="ghost"
@@ -513,22 +559,21 @@ export function EnglishLearningApp() {
               </div>
 
               <ScrollArea className="flex-1">
-                <div className="p-3 flex flex-col gap-2">
+                <div className="p-2 flex flex-col gap-1">
                   {isLoadingVocab ? (
                     <div className="flex items-center justify-center py-8">
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
-                  ) : vocabulary.length === 0 ? (
+                  ) : filteredVocabulary.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
                       <BookOpen className="h-8 w-8 opacity-30" />
                       <p className="text-xs text-center text-balance leading-relaxed">
-                        Vocabulary items will appear here after you stop and save a recording.
-                        You can also manually highlight text from the transcript.
+                        No items in this filter yet.
                       </p>
                     </div>
                   ) : (
                     <>
-                      {vocabulary.map((item) => (
+                      {filteredVocabulary.map((item) => (
                         <VocabularyCard
                           key={item.id}
                           item={item}
@@ -576,4 +621,8 @@ export function EnglishLearningApp() {
       <Toaster position="bottom-right" richColors />
     </div>
   )
+}
+
+function normalizeVocabType(type: VocabularyItem["type"]): VocabularyItem["type"] {
+  return type === "word" ? "word" : "idiom"
 }

@@ -11,15 +11,11 @@ import { cn } from "@/lib/utils"
 const TYPE_COLORS: Record<string, string> = {
   word: "bg-primary/10 text-primary border-primary/20",
   idiom: "bg-accent/10 text-accent-foreground border-accent/20",
-  phrasal_verb: "bg-chart-5/10 text-foreground border-chart-5/20",
-  expression: "bg-chart-4/10 text-foreground border-chart-4/20",
 }
 
 const TYPE_LABELS: Record<string, string> = {
   word: "Word",
   idiom: "Idiom",
-  phrasal_verb: "Phrasal Verb",
-  expression: "Expression",
 }
 
 interface VocabularyCardProps {
@@ -42,85 +38,82 @@ export function VocabularyCard({
   return (
     <Card
       className={cn(
-        "transition-all duration-200 border",
+        "transition-all duration-200 border rounded-lg py-1 gap-0",
         item.is_mastered && "opacity-60"
       )}
     >
-      <CardHeader className="pb-2 pt-3 px-4">
+      <CardHeader className="py-0 px-2">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-            <span className="font-semibold text-foreground text-sm leading-tight break-words">
+          <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
+            <span className="font-semibold text-foreground text-sm leading-none break-words">
               {item.word}
             </span>
             <Badge
               variant="outline"
-              className={cn("text-xs shrink-0", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}
+              className={cn("text-xs h-4 px-1.5 shrink-0", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}
             >
               {TYPE_LABELS[item.type] ?? item.type}
             </Badge>
             {item.korean_translation && (
-              <Badge className="text-xs shrink-0 bg-korean text-korean-foreground border-0">
+              <Badge className="text-xs h-4 px-1.5 shrink-0 bg-korean text-korean-foreground border-0">
                 {item.korean_translation}
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-5 w-5"
               onClick={() => onToggleMastered(item.id, item.is_mastered)}
               title={item.is_mastered ? "Mark as not mastered" : "Mark as mastered"}
             >
               {item.is_mastered ? (
-                <CheckCircle2 className="h-4 w-4 text-accent" />
+                <CheckCircle2 className="h-3.5 w-3.5 text-accent" />
               ) : (
-                <Circle className="h-4 w-4 text-muted-foreground" />
+                <Circle className="h-3.5 w-3.5 text-muted-foreground" />
               )}
             </Button>
             {!item.korean_translation && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="h-5 w-5"
                 onClick={() => onTranslate(item)}
                 disabled={isTranslating}
                 title="Translate to Korean"
               >
-                <Globe className={cn("h-4 w-4 text-muted-foreground", isTranslating && "animate-pulse")} />
+                <Globe className={cn("h-3.5 w-3.5 text-muted-foreground", isTranslating && "animate-pulse")} />
               </Button>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-5 w-5"
               onClick={() => setExpanded(!expanded)}
               title="Toggle details"
             >
               {expanded ? (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
               ) : (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
               )}
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-5 w-5"
               onClick={() => onDelete(item.id)}
               title="Delete"
             >
-              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+              <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
             </Button>
           </div>
         </div>
-        {item.definition && (
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.definition}</p>
-        )}
       </CardHeader>
 
       {expanded && (
-        <CardContent className="px-4 pb-3 pt-0 space-y-2 border-t border-border mt-1">
+        <CardContent className="px-1.5 pb-0 pt-0 space-y-0.5 border-t border-border mt-0">
           {item.example_sentence && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Example</p>

@@ -32,7 +32,7 @@ async function loadModel() {
 }
 
 self.addEventListener("message", async (event) => {
-  const { type, audio } = event.data
+  const { type, audio, samplingRate } = event.data
 
   if (type === "load") {
     await loadModel()
@@ -46,9 +46,10 @@ self.addEventListener("message", async (event) => {
     }
     try {
       const result = await transcriber(audio, {
-        sampling_rate: 16000,
-        chunk_length_s: 30,
-        stride_length_s: 5,
+        sampling_rate: typeof samplingRate === "number" ? samplingRate : 16000,
+        // Smaller windows improve perceived "real-time" updates.
+        chunk_length_s: 5,
+        stride_length_s: 1,
         return_timestamps: false,
       })
       self.postMessage({ type: "result", text: result.text })
