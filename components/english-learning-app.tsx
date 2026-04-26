@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useTranscription } from "@/hooks/use-transcription"
 import { TranscriptPanel } from "@/components/transcript-panel"
 import { RecordingControls } from "@/components/recording-controls"
@@ -64,6 +64,7 @@ export function EnglishLearningApp() {
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
   const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "idiom">("all")
+  const [vocabView, setVocabView] = useState<"items" | "frequency">("items")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
 
@@ -478,6 +479,20 @@ export function EnglishLearningApp() {
     toast.success("Group deleted")
   }, [selectedGroupId])
 
+  const handleSelectGroup = useCallback((groupId: string | null) => {
+    setSelectedGroupId(groupId)
+    setSelectedConversationId(null)
+    if (groupId) {
+      setCurrentConversationId(null)
+    }
+    if (isLocal) {
+      setVocabulary(localGetVocabulary())
+    } else {
+      void fetchVocabulary()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocal])
+
   const handleToggleEditTranscript = useCallback(async () => {
     if (!isEditingTranscript) {
       setIsEditingTranscript(true)
@@ -516,14 +531,104 @@ export function EnglishLearningApp() {
     }
   }, [isEditingTranscript, selectedConversationId, currentConversationId, isLocal, transcript])
 
-  const masteredCount = vocabulary.filter((v) => v.is_mastered).length
-  const wordCount = vocabulary.filter((v) => v.type === "word").length
-  const idiomCount = vocabulary.length - wordCount
-  const filteredVocabulary = vocabulary.filter((item) => {
+  const activeGroupConversationIds = useMemo(() => {
+    if (!selectedGroupId) return null
+    const group = conversationGroups.find((g) => g.id === selectedGroupId)
+    return group ? new Set(group.conversation_ids) : null
+  }, [selectedGroupId, conversationGroups])
+
+  const scopedVocabulary = useMemo(() => {
+    if (selectedConversationId) {
+      return vocabulary.filter((v) => v.conversation_id === selectedConversationId)
+    }
+    if (activeGroupConversationIds) {
+      return vocabulary.filter((v) => v.conversation_id && activeGroupConversationIds.has(v.conversation_id))
+    }
+    return vocabulary
+  }, [vocabulary, selectedConversationId, activeGroupConversationIds])
+
+  const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
+  const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
+  const idiomCount = scopedVocabulary.length - wordCount
+  const filteredVocabulary = scopedVocabulary.filter((item) => {
     if (vocabFilter === "all") return true
     if (vocabFilter === "word") return item.type === "word"
     return item.type !== "word"
   })
+
+  const scopeConversations = useMemo(() => {
+    if (selectedConversationId) {
+      return conversations.filter((c) => c.id === selectedConversationId)
+    }
+    if (activeGroupConversationIds) {
+      return conversations.filter((c) => activeGroupConversationIds.has(c.id))
+    }
+    return conversations
+  }, [conversations, selectedConversationId, activeGroupConversationIds])
+
+  const frequentWords = useMemo(() => {
+    const stop = new Set([
+      "the","a","an","and","or","to","of","in","on","at","for","with","is","are","was","were","be","been","being",
+      "it","this","that","these","those","i","you","he","she","we","they","them","his","her","our","their","my","me",
+      "as","by","from","but","if","then","so","do","does","did","have","has","had","not","no","yes","can","could",
+      "will","would","should","about","into","over","under","just","very","there","here","what","when","where","who",
+    ])
+    const counts = new Map<string, number>()
+    for (const conv of scopeConversations) {
+      const words = conv.transcript.toLowerCase().match(/[a-z']+/g) ?? []
+      for (const w of words) {
+        if (w.length < 3 || stop.has(w)) continue
+        counts.set(w, (counts.get(w) ?? 0) + 1)
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
+      .slice(0, 120)
+  }, [scopeConversations])
+
+  const handleAddFrequentWord = useCallback(async (word: string) => {
+    const already = vocabulary.some((v) => v.word.toLowerCase() === word.toLowerCase())
+    if (already) {
+      toast.info(`"${word}" is already in vocabulary`)
+      return
+    }
+    try {
+      let saved: VocabularyItem
+      const targetConversationId = selectedConversationId ?? null
+      if (isLocal) {
+        saved = localCreateVocabularyItem({
+          conversation_id: targetConversationId,
+          word,
+          type: "word",
+          definition: "Frequent word from selected sessions.",
+          example_sentence: null,
+          context: null,
+          korean_translation: null,
+        })
+      } else {
+        const res = await fetch("/api/vocabulary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id: targetConversationId,
+            word,
+            type: "word",
+            definition: "Frequent word from selected sessions.",
+            example_sentence: null,
+            context: null,
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to add word")
+        saved = await res.json()
+      }
+      setVocabulary((prev) => [saved, ...prev])
+      toast.success(`"${word}" added to vocabulary`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    }
+  }, [vocabulary, isLocal, selectedConversationId])
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -731,8 +836,30 @@ export function EnglishLearningApp() {
               <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-xs font-medium text-muted-foreground">
-                    {selectedConversationId ? "This session" : "All items"}
+                    {selectedConversationId
+                      ? "This session"
+                      : selectedGroupId
+                        ? "This group"
+                        : "All items"}
                   </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={vocabView === "items" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setVocabView("items")}
+                    >
+                      Items
+                    </Button>
+                    <Button
+                      variant={vocabView === "frequency" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setVocabView("frequency")}
+                    >
+                      Top words
+                    </Button>
+                  </div>
                   <div className="flex items-center gap-1">
                     <Button
                       variant={vocabFilter === "all" ? "secondary" : "ghost"}
@@ -740,7 +867,7 @@ export function EnglishLearningApp() {
                       className="h-6 px-2 text-[11px]"
                       onClick={() => setVocabFilter("all")}
                     >
-                      All {vocabulary.length}
+                      All {scopedVocabulary.length}
                     </Button>
                     <Button
                       variant={vocabFilter === "word" ? "secondary" : "ghost"}
@@ -790,14 +917,14 @@ export function EnglishLearningApp() {
                     <div className="flex items-center justify-center py-8">
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
-                  ) : filteredVocabulary.length === 0 ? (
+                  ) : vocabView === "items" && filteredVocabulary.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
                       <BookOpen className="h-8 w-8 opacity-30" />
                       <p className="text-xs text-center text-balance leading-relaxed">
                         No items in this filter yet.
                       </p>
                     </div>
-                  ) : (
+                  ) : vocabView === "items" ? (
                     <>
                       {filteredVocabulary.map((item) => (
                         <VocabularyCard
@@ -811,10 +938,36 @@ export function EnglishLearningApp() {
                       ))}
                       {masteredCount > 0 && (
                         <p className="text-center text-xs text-muted-foreground py-2">
-                          {masteredCount} of {vocabulary.length} mastered
+                          {masteredCount} of {scopedVocabulary.length} mastered
                         </p>
                       )}
                     </>
+                  ) : frequentWords.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                      <BookOpen className="h-8 w-8 opacity-30" />
+                      <p className="text-xs text-center text-balance leading-relaxed">
+                        No frequent words in this scope yet.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {frequentWords.map((item) => (
+                        <div key={item.word} className="flex items-center justify-between rounded-md border border-border px-2 py-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium truncate">{item.word}</span>
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">{item.count}</Badge>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => void handleAddFrequentWord(item.word)}
+                          >
+                            + Add
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </ScrollArea>
@@ -833,7 +986,7 @@ export function EnglishLearningApp() {
                   onDelete={handleDeleteConversation}
                   onCreateGroup={handleCreateGroup}
                   onDeleteGroup={handleDeleteGroup}
-                  onSelectGroup={setSelectedGroupId}
+                  onSelectGroup={handleSelectGroup}
                 />
               </div>
             </TabsContent>
