@@ -7,6 +7,7 @@ import { RecordingControls } from "@/components/recording-controls"
 import { VocabularyCard } from "@/components/vocabulary-card"
 import { ConversationHistory } from "@/components/conversation-history"
 import { ManualAddForm } from "@/components/manual-add-form"
+import { ConfigDialog } from "@/components/config-dialog"
 import { VocabularyItem, Conversation, ExtractedItem } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,10 +23,32 @@ import {
   Loader2,
   AlertCircle,
   MousePointerClick,
+  Settings2,
+  Database,
+  HardDrive,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getStorageConfig, StorageConfig } from "@/lib/storage-config"
+import {
+  localGetConversations,
+  localCreateConversation,
+  localGetVocabulary,
+  localCreateVocabularyItem,
+  localUpdateVocabularyItem,
+  localDeleteVocabularyItem,
+} from "@/lib/local-storage-db"
 
 export function EnglishLearningApp() {
+  // Storage config
+  const [storageConfig, setStorageConfig] = useState<StorageConfig>({ mode: "supabase", supabaseUrl: "", supabaseAnonKey: "" })
+  const [showConfig, setShowConfig] = useState(false)
+  const isLocal = storageConfig.mode === "local"
+
+  // Load storage config on mount
+  useEffect(() => {
+    setStorageConfig(getStorageConfig())
+  }, [])
+
   // Transcription state
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -51,13 +74,18 @@ export function EnglishLearningApp() {
       onError: (msg) => toast.error(msg),
     })
 
-  // Load conversations on mount
+  // Reload data when storage mode changes
   useEffect(() => {
     fetchConversations()
     fetchVocabulary()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageConfig.mode])
 
   async function fetchConversations() {
+    if (isLocal) {
+      setConversations(localGetConversations())
+      return
+    }
     const res = await fetch("/api/conversations")
     if (res.ok) {
       const data = await res.json()
@@ -67,6 +95,11 @@ export function EnglishLearningApp() {
 
   async function fetchVocabulary(conversationId?: string) {
     setIsLoadingVocab(true)
+    if (isLocal) {
+      setVocabulary(localGetVocabulary(conversationId))
+      setIsLoadingVocab(false)
+      return
+    }
     const url = conversationId ? `/api/vocabulary?conversation_id=${conversationId}` : "/api/vocabulary"
     const res = await fetch(url)
     if (res.ok) {
@@ -86,21 +119,25 @@ export function EnglishLearningApp() {
     if (!transcript.trim()) return
     setIsSaving(true)
     try {
-      // 1) Save conversation
-      const saveRes = await fetch("/api/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `Session — ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
-          transcript: transcript,
-          duration_seconds: duration,
-        }),
-      })
-      if (!saveRes.ok) throw new Error("Failed to save conversation")
-      const savedConv: Conversation = await saveRes.json()
+      const sessionTitle = `Session — ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+
+      // 1) Save conversation (local or remote)
+      let savedConv: Conversation
+      if (isLocal) {
+        savedConv = localCreateConversation(sessionTitle, transcript, duration)
+        setConversations((prev) => [savedConv, ...prev])
+      } else {
+        const saveRes = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: sessionTitle, transcript, duration_seconds: duration }),
+        })
+        if (!saveRes.ok) throw new Error("Failed to save conversation")
+        savedConv = await saveRes.json()
+        await fetchConversations()
+      }
       setCurrentConversationId(savedConv.id)
       toast.success("Session saved!")
-      await fetchConversations()
 
       // 2) Auto-extract vocabulary with Gemini
       setIsSaving(false)
@@ -116,27 +153,41 @@ export function EnglishLearningApp() {
       if (items.length === 0) {
         toast.info("No new vocabulary items found in this transcript.")
       } else {
-        // 3) Save each extracted item
-        const savePromises = items.map((item) =>
-          fetch("/api/vocabulary", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+        // 3) Save each extracted item (local or remote)
+        let saved: VocabularyItem[]
+        if (isLocal) {
+          saved = items.map((item) =>
+            localCreateVocabularyItem({
               conversation_id: savedConv.id,
               word: item.word,
               type: item.type,
               definition: item.definition,
               example_sentence: item.example_sentence,
               context: item.context,
-            }),
-          }).then((r) => r.json())
-        )
-        const saved = await Promise.all(savePromises)
+              korean_translation: null,
+            })
+          )
+        } else {
+          const savePromises = items.map((item) =>
+            fetch("/api/vocabulary", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                conversation_id: savedConv.id,
+                word: item.word,
+                type: item.type,
+                definition: item.definition,
+                example_sentence: item.example_sentence,
+                context: item.context,
+              }),
+            }).then((r) => r.json())
+          )
+          saved = await Promise.all(savePromises)
+        }
         setVocabulary((prev) => [...saved, ...prev])
         toast.success(`Extracted ${items.length} vocabulary item${items.length !== 1 ? "s" : ""}!`)
       }
 
-      // Reset for next session
       reset()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
@@ -145,23 +196,34 @@ export function EnglishLearningApp() {
       setIsSaving(false)
       setIsExtracting(false)
     }
-  }, [transcript, duration, reset])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcript, duration, reset, isLocal])
 
   // Manual add from form
   const handleManualAdd = useCallback(
     async (item: { word: string; type: string; definition: string; context: string }) => {
       setIsSubmittingManual(true)
       try {
-        const res = await fetch("/api/vocabulary", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        let saved: VocabularyItem
+        if (isLocal) {
+          saved = localCreateVocabularyItem({
             conversation_id: currentConversationId,
-            ...item,
-          }),
-        })
-        if (!res.ok) throw new Error("Failed to add item")
-        const saved: VocabularyItem = await res.json()
+            word: item.word,
+            type: item.type as VocabularyItem["type"],
+            definition: item.definition,
+            example_sentence: null,
+            context: item.context,
+            korean_translation: null,
+          })
+        } else {
+          const res = await fetch("/api/vocabulary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversation_id: currentConversationId, ...item }),
+          })
+          if (!res.ok) throw new Error("Failed to add item")
+          saved = await res.json()
+        }
         setVocabulary((prev) => [saved, ...prev])
         setShowManualAdd(false)
         setManualWord("")
@@ -173,20 +235,31 @@ export function EnglishLearningApp() {
         setIsSubmittingManual(false)
       }
     },
-    [currentConversationId]
+    [currentConversationId, isLocal]
   )
 
   // Delete vocabulary item
   const handleDelete = useCallback(async (id: string) => {
+    if (isLocal) {
+      localDeleteVocabularyItem(id)
+      setVocabulary((prev) => prev.filter((v) => v.id !== id))
+      toast.success("Item removed")
+      return
+    }
     const res = await fetch(`/api/vocabulary/${id}`, { method: "DELETE" })
     if (res.ok) {
       setVocabulary((prev) => prev.filter((v) => v.id !== id))
       toast.success("Item removed")
     }
-  }, [])
+  }, [isLocal])
 
   // Toggle mastered
   const handleToggleMastered = useCallback(async (id: string, current: boolean) => {
+    if (isLocal) {
+      const updated = localUpdateVocabularyItem(id, { is_mastered: !current })
+      if (updated) setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
+      return
+    }
     const res = await fetch(`/api/vocabulary/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -196,7 +269,7 @@ export function EnglishLearningApp() {
       const updated: VocabularyItem = await res.json()
       setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
     }
-  }, [])
+  }, [isLocal])
 
   // Translate to Korean via Gemini
   const handleTranslate = useCallback(async (item: VocabularyItem) => {
@@ -215,16 +288,25 @@ export function EnglishLearningApp() {
       })
       if (!res.ok) throw new Error("Translation failed")
       const data = await res.json()
-      // Save the Korean translation back to DB
-      const patchRes = await fetch(`/api/vocabulary/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ korean_translation: data.korean_translation }),
-      })
-      if (patchRes.ok) {
-        const updated: VocabularyItem = await patchRes.json()
-        setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
-        toast.success(`Korean translation added for "${item.word}"`)
+      const koreanTranslation: string = data.korean_translation
+
+      if (isLocal) {
+        const updated = localUpdateVocabularyItem(item.id, { korean_translation: koreanTranslation })
+        if (updated) {
+          setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
+          toast.success(`Korean translation added for "${item.word}"`)
+        }
+      } else {
+        const patchRes = await fetch(`/api/vocabulary/${item.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ korean_translation: koreanTranslation }),
+        })
+        if (patchRes.ok) {
+          const updated: VocabularyItem = await patchRes.json()
+          setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
+          toast.success(`Korean translation added for "${item.word}"`)
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
@@ -232,15 +314,20 @@ export function EnglishLearningApp() {
     } finally {
       setTranslatingId(null)
     }
-  }, [])
+  }, [isLocal])
 
   // Load a past conversation
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setSelectedConversationId(conv.id)
     setTranscript(conv.transcript)
     setCurrentConversationId(conv.id)
-    await fetchVocabulary(conv.id)
-  }, [setTranscript])
+    if (isLocal) {
+      setVocabulary(localGetVocabulary(conv.id))
+    } else {
+      await fetchVocabulary(conv.id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setTranscript, isLocal])
 
   const masteredCount = vocabulary.filter((v) => v.is_mastered).length
 
@@ -276,6 +363,29 @@ export function EnglishLearningApp() {
             <BookOpen className="h-3 w-3" />
             {vocabulary.length} words · {masteredCount} mastered
           </Badge>
+          {/* Storage mode badge */}
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-xs gap-1 hidden sm:flex",
+              isLocal
+                ? "text-muted-foreground border-border"
+                : "text-primary border-primary/30 bg-primary/5"
+            )}
+          >
+            {isLocal ? <HardDrive className="h-3 w-3" /> : <Database className="h-3 w-3" />}
+            {isLocal ? "Local" : "Supabase"}
+          </Badge>
+          {/* Config button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            onClick={() => setShowConfig(true)}
+            title="Storage configuration"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
@@ -452,6 +562,16 @@ export function EnglishLearningApp() {
           </Tabs>
         </div>
       </div>
+
+      {/* Config dialog */}
+      <ConfigDialog
+        open={showConfig}
+        onOpenChange={setShowConfig}
+        onSave={(cfg) => {
+          setStorageConfig(cfg)
+          toast.success(`Storage switched to ${cfg.mode === "local" ? "Local (browser)" : "Supabase"}`)
+        }}
+      />
 
       <Toaster position="bottom-right" richColors />
     </div>
