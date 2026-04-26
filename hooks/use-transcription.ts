@@ -63,6 +63,8 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
   const audioBufferRef = useRef<Float32Array[]>([])
   const isRecordingRef = useRef(false)
   const chunkIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // Ref to stable stop fn to avoid circular useCallback deps
+  const stopRef = useRef<() => void>(() => {})
 
   const isRecording = status === "recording"
 
@@ -209,16 +211,16 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
 
       // Stop when user stops screen share
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
-        if (isRecordingRef.current) stop()
+        if (isRecordingRef.current) stopRef.current()
       })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       onError?.(msg.includes("Permission denied") ? "Screen share permission denied." : msg)
       setStatus("ready")
     }
-  }, [useWebSpeech, startWebSpeech, processAudioChunk, onError])
+  }, [useWebSpeech, startWebSpeech, processAudioChunk, onError, stopRef])
 
-  const stop = useCallback(() => {
+  const stop: () => void = useCallback(() => {
     isRecordingRef.current = false
 
     // Process any remaining audio
@@ -245,6 +247,9 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     setInterimTranscript("")
     setStatus("ready")
   }, [useWebSpeech, processAudioChunk])
+
+  // Keep stopRef current
+  stopRef.current = stop
 
   const reset = useCallback(() => {
     setTranscript("")

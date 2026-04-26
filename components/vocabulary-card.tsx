@@ -136,7 +136,7 @@ export function VocabularyCard({
           {item.korean_translation && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Korean</p>
-              <p className="text-sm font-semibold" style={{ color: "oklch(var(--korean) / 1)" }}>
+              <p className="text-sm font-semibold text-korean">
                 {item.korean_translation}
               </p>
             </div>
