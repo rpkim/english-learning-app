@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Square, Mic, Loader2, Save, Monitor } from "lucide-react"
+import { Square, Mic, Loader2, Save, Monitor, Plus } from "lucide-react"
 
 interface RecordingControlsProps {
   isRecording: boolean
@@ -15,6 +15,7 @@ interface RecordingControlsProps {
   onStart: () => void
   onStop: () => void
   onSave: () => void
+  onNew: () => void
   hasTranscript: boolean
 }
 
@@ -34,6 +35,7 @@ export function RecordingControls({
   onStart,
   onStop,
   onSave,
+  onNew,
   hasTranscript,
 }: RecordingControlsProps) {
   return (
@@ -103,19 +105,25 @@ export function RecordingControls({
 
       {/* Save button */}
       {hasTranscript && !isRecording && (
-        <Button
-          onClick={onSave}
-          variant="outline"
-          className="gap-2"
-          disabled={isSaving || isExtracting}
-        >
-          {isSaving || isExtracting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          {isExtracting ? "Extracting..." : isSaving ? "Saving..." : "Save & Extract"}
-        </Button>
+        <>
+          <Button onClick={onNew} variant="ghost" className="gap-1.5" disabled={isSaving || isExtracting || isLoading}>
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+          <Button
+            onClick={onSave}
+            variant="outline"
+            className="gap-2"
+            disabled={isSaving || isExtracting}
+          >
+            {isSaving || isExtracting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {isExtracting ? "Extracting..." : isSaving ? "Saving..." : "Save & Extract"}
+          </Button>
+        </>
       )}
     </div>
   )
