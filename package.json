@@ -1,9 +1,17 @@
 {
   "name": "my-project",
   "version": "0.1.0",
+  "description": "EnglishLens desktop app",
+  "author": "EnglishLens",
+  "main": "electron/main.js",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "desktop:web": "next dev -p 3010",
+    "desktop:dev": "concurrently -k \"pnpm run desktop:web\" \"wait-on http://localhost:3010 && electron .\"",
+    "desktop:start": "electron .",
+    "desktop:build:web": "next build",
+    "desktop:dist": "pnpm run desktop:build:web && electron-builder --mac dmg",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."
@@ -68,9 +76,36 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "com.englishlens.desktop",
+    "productName": "EnglishLens",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/**/*",
+      "public/**/*",
+      "package.json",
+      "next.config.mjs"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.education"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   }
 }
