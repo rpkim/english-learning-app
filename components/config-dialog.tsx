@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { getStorageConfig, saveStorageConfig, StorageConfig, StorageMode } from "@/lib/storage-config"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getStorageConfig, saveStorageConfig, StorageConfig, StorageMode, WhisperModel } from "@/lib/storage-config"
 import { Database, HardDrive, CheckCircle2, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -27,6 +28,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const [mode, setMode] = useState<StorageMode>("supabase")
   const [supabaseUrl, setSupabaseUrl] = useState("")
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("")
+  const [whisperModel, setWhisperModel] = useState<WhisperModel>("tiny")
 
   // Load saved config when dialog opens
   useEffect(() => {
@@ -35,6 +37,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       setMode(cfg.mode)
       setSupabaseUrl(cfg.supabaseUrl)
       setSupabaseAnonKey(cfg.supabaseAnonKey)
+      setWhisperModel(cfg.whisperModel ?? "tiny")
     }
   }, [open])
 
@@ -43,7 +46,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const canSave = mode === "local" || (urlValid && keyValid)
 
   function handleSave() {
-    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey }
+    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey, whisperModel }
     saveStorageConfig(config)
     onSave(config)
     onOpenChange(false)
@@ -148,6 +151,22 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
             browser. Clearing browser data will erase all sessions and vocabulary.
           </div>
         )}
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Transcription model</Label>
+          <Select value={whisperModel} onValueChange={(value) => setWhisperModel(value as WhisperModel)}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tiny">Whisper Tiny (faster)</SelectItem>
+              <SelectItem value="base">Whisper Base (more accurate)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            Base improves accuracy but uses more memory and can be slower.
+          </p>
+        </div>
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

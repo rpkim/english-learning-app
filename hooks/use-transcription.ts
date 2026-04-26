@@ -45,6 +45,7 @@ interface AnyWindow extends Window {
 interface UseTranscriptionOptions {
   onTranscript?: (text: string) => void
   onError?: (msg: string) => void
+  whisperModel?: "tiny" | "base"
 }
 
 const TARGET_SAMPLE_RATE = 16000
@@ -61,7 +62,7 @@ function hasWebSpeechSupport() {
  *
  * Falls back to Web Speech API if WebWorker/WASM is unavailable.
  */
-export function useTranscription({ onTranscript, onError }: UseTranscriptionOptions = {}) {
+export function useTranscription({ onTranscript, onError, whisperModel = "tiny" }: UseTranscriptionOptions = {}) {
   const [status, setStatus] = useState<TranscriptionStatus>("idle")
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [loadingFile, setLoadingFile] = useState("")
@@ -88,6 +89,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioBufferRef = useRef<Float32Array[]>([])
   const inputSampleRateRef = useRef(16000)
+  const whisperModelRef = useRef<"tiny" | "base">(whisperModel)
   const startedAtRef = useRef<number>(0)
   const audioFrameCountRef = useRef(0)
   const noAudioWarnTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -147,7 +149,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
         setStatus("ready")
       }
       workerRef.current = worker
-      worker.postMessage({ type: "load" })
+      worker.postMessage({ type: "load", model: whisperModelRef.current })
     } catch {
       workerReadyRef.current = false
       if (hasWebSpeechSupport()) {
@@ -160,6 +162,17 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
       setStatus("ready")
     }
   }, [])
+
+  useEffect(() => {
+    whisperModelRef.current = whisperModel
+    if (workerRef.current) {
+      workerRef.current.terminate()
+      workerRef.current = null
+      workerReadyRef.current = false
+      setDebugInfo((prev) => ({ ...prev, workerState: "idle" }))
+    }
+    initWorker()
+  }, [whisperModel, initWorker])
 
   // Web Speech API fallback
   const startWebSpeech = useCallback((stream: MediaStream) => {

@@ -28,6 +28,7 @@ import {
   HardDrive,
   Pencil,
   Check,
+  Languages,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getStorageConfig, StorageConfig } from "@/lib/storage-config"
@@ -35,6 +36,7 @@ import {
   localGetConversations,
   localCreateConversation,
   localUpdateConversationTitle,
+  localUpdateConversationTranscript,
   localDeleteConversation,
   localGetConversationGroups,
   localCreateConversationGroup,
@@ -56,6 +58,8 @@ export function EnglishLearningApp() {
   const [isSaving, setIsSaving] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
+  const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
+  const [recentTranslation, setRecentTranslation] = useState<{ source: string; korean: string } | null>(null)
 
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
@@ -67,6 +71,8 @@ export function EnglishLearningApp() {
   const [showManualAdd, setShowManualAdd] = useState(false)
   const [manualWord, setManualWord] = useState("")
   const [isSubmittingManual, setIsSubmittingManual] = useState(false)
+  const [isTranslatingSelectedText, setIsTranslatingSelectedText] = useState(false)
+  const [translatedSelectedText, setTranslatedSelectedText] = useState<string | null>(null)
 
   // History state
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -78,6 +84,7 @@ export function EnglishLearningApp() {
   const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, start, stop, reset, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
+      whisperModel: storageConfig.whisperModel,
     })
 
   // Reload data when storage mode changes
@@ -119,7 +126,29 @@ export function EnglishLearningApp() {
   // Handle text selection from transcript for manual save
   const handleTextSelect = useCallback((text: string) => {
     setManualWord(text)
+    setTranslatedSelectedText(null)
     setShowManualAdd(true)
+  }, [])
+
+  const handleTranslateSelectedText = useCallback(async (text: string) => {
+    const input = text.trim()
+    if (!input) return
+    setIsTranslatingSelectedText(true)
+    try {
+      const res = await fetch("/api/translate-recent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: input }),
+      })
+      if (!res.ok) throw new Error("Failed to translate selected text")
+      const data = await res.json()
+      setTranslatedSelectedText(typeof data?.korean_translation === "string" ? data.korean_translation : "")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsTranslatingSelectedText(false)
+    }
   }, [])
 
   // Save session + auto-extract vocabulary
@@ -246,6 +275,7 @@ export function EnglishLearningApp() {
         setVocabulary((prev) => [saved, ...prev])
         setShowManualAdd(false)
         setManualWord("")
+        setTranslatedSelectedText(null)
         toast.success(`"${saved.word}" added to vocabulary!`)
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error"
@@ -335,6 +365,30 @@ export function EnglishLearningApp() {
     }
   }, [isLocal])
 
+  const handleTranslateRecent = useCallback(async () => {
+    const input = `${transcript} ${interimTranscript}`.trim()
+    if (!input) return
+    setIsTranslatingRecent(true)
+    try {
+      const res = await fetch("/api/translate-recent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: input }),
+      })
+      if (!res.ok) throw new Error("Failed to translate recent lines")
+      const data = await res.json()
+      setRecentTranslation({
+        source: typeof data?.source === "string" ? data.source : "",
+        korean: typeof data?.korean_translation === "string" ? data.korean_translation : "",
+      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsTranslatingRecent(false)
+    }
+  }, [transcript, interimTranscript])
+
   // Load a past conversation
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setSelectedConversationId(conv.id)
@@ -423,6 +477,44 @@ export function EnglishLearningApp() {
     if (selectedGroupId === groupId) setSelectedGroupId(null)
     toast.success("Group deleted")
   }, [selectedGroupId])
+
+  const handleToggleEditTranscript = useCallback(async () => {
+    if (!isEditingTranscript) {
+      setIsEditingTranscript(true)
+      return
+    }
+
+    // Done: persist edited transcript for currently selected/saved session.
+    const targetConversationId = selectedConversationId ?? currentConversationId
+    if (!targetConversationId) {
+      setIsEditingTranscript(false)
+      return
+    }
+
+    try {
+      if (isLocal) {
+        const updated = localUpdateConversationTranscript(targetConversationId, transcript)
+        if (updated) {
+          setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        }
+      } else {
+        const res = await fetch(`/api/conversations/${targetConversationId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript }),
+        })
+        if (!res.ok) throw new Error("Failed to save edited transcript")
+        const updated: Conversation = await res.json()
+        setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      }
+      toast.success("Transcript updated")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsEditingTranscript(false)
+    }
+  }, [isEditingTranscript, selectedConversationId, currentConversationId, isLocal, transcript])
 
   const masteredCount = vocabulary.filter((v) => v.is_mastered).length
   const wordCount = vocabulary.filter((v) => v.type === "word").length
@@ -525,7 +617,7 @@ export function EnglishLearningApp() {
                   size="sm"
                   variant="outline"
                   className="h-7 gap-1.5 text-xs"
-                  onClick={() => setIsEditingTranscript((v) => !v)}
+                  onClick={() => void handleToggleEditTranscript()}
                 >
                   {isEditingTranscript ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
                   {isEditingTranscript ? "Done" : "Edit"}
@@ -537,6 +629,18 @@ export function EnglishLearningApp() {
                   </p>
                 )}
               </div>
+            )}
+            {transcript && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 gap-1.5 text-xs"
+                onClick={handleTranslateRecent}
+                disabled={isTranslatingRecent}
+              >
+                {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                가장 최근 2-3문장 번역
+              </Button>
             )}
           </div>
 
@@ -557,6 +661,13 @@ export function EnglishLearningApp() {
           )}
 
           {/* Transcript */}
+          {recentTranslation?.korean && (
+            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground mb-1">Recent</p>
+              <p className="text-xs text-foreground mb-1">{recentTranslation.source}</p>
+              <p className="text-sm font-medium text-primary">{recentTranslation.korean}</p>
+            </div>
+          )}
           <TranscriptPanel
             transcript={transcript}
             interimTranscript={interimTranscript}
@@ -579,7 +690,10 @@ export function EnglishLearningApp() {
               <ManualAddForm
                 initialWord={manualWord}
                 onAdd={handleManualAdd}
-                onCancel={() => { setShowManualAdd(false); setManualWord("") }}
+                onTranslateSelected={handleTranslateSelectedText}
+                translatedSelectedText={translatedSelectedText}
+                isTranslatingSelected={isTranslatingSelectedText}
+                onCancel={() => { setShowManualAdd(false); setManualWord(""); setTranslatedSelectedText(null) }}
                 isSubmitting={isSubmittingManual}
               />
             </div>

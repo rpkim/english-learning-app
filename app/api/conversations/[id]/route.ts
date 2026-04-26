@@ -9,15 +9,21 @@ export async function PATCH(request: Request, context: RouteContext) {
   const supabase = await createClient()
   const { id } = await context.params
   const body = await request.json()
-  const title = typeof body?.title === "string" ? body.title.trim() : ""
+  const patch: { title?: string; transcript?: string } = {}
+  if (typeof body?.title === "string" && body.title.trim()) {
+    patch.title = body.title.trim()
+  }
+  if (typeof body?.transcript === "string") {
+    patch.transcript = body.transcript
+  }
 
-  if (!title) {
-    return NextResponse.json({ error: "Title is required" }, { status: 400 })
+  if (!patch.title && patch.transcript === undefined) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
   }
 
   const { data, error } = await supabase
     .from("conversations")
-    .update({ title })
+    .update(patch)
     .eq("id", id)
     .select()
     .single()

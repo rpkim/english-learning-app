@@ -10,12 +10,25 @@ env.allowLocalModels = false
 env.useBrowserCache = true
 
 let transcriber = null
+let loadedModelId = null
 
-async function loadModel() {
+async function loadModel(model = "tiny") {
+  const modelId = model === "base" ? "Xenova/whisper-base.en" : "Xenova/whisper-tiny.en"
+  if (transcriber && loadedModelId === modelId) {
+    self.postMessage({ type: "ready" })
+    return
+  }
+
+  if (transcriber && typeof transcriber.dispose === "function") {
+    try {
+      await transcriber.dispose()
+    } catch {}
+  }
+
   self.postMessage({ type: "loading", message: "Downloading Whisper model (first time only)..." })
   transcriber = await pipeline(
     "automatic-speech-recognition",
-    "Xenova/whisper-tiny.en",
+    modelId,
     {
       progress_callback: (p) => {
         if (p.status === "progress") {
@@ -28,6 +41,7 @@ async function loadModel() {
       },
     }
   )
+  loadedModelId = modelId
   self.postMessage({ type: "ready" })
 }
 
@@ -35,7 +49,7 @@ self.addEventListener("message", async (event) => {
   const { type, audio, samplingRate } = event.data
 
   if (type === "load") {
-    await loadModel()
+    await loadModel(event.data.model)
     return
   }
 
