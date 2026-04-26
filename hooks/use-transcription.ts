@@ -53,6 +53,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
   const [interimTranscript, setInterimTranscript] = useState("")
   const [duration, setDuration] = useState(0)
   const [useWebSpeech, setUseWebSpeech] = useState(false)
+  const [audioSource, setAudioSource] = useState<"system" | "microphone" | null>(null)
 
   const workerRef = useRef<Worker | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -157,19 +158,9 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     workerRef.current.postMessage({ type: "transcribe", audio: combined }, [combined.buffer])
   }, [])
 
-  const start = useCallback(async () => {
-    try {
-      setStatus("loading_model")
-      // Capture system audio via screen share (show entire screen, audio only matters)
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          sampleRate: 16000,
-        },
-      })
-
+  /** Core recording setup once we have a MediaStream */
+  const startFromStream = useCallback(
+    (stream: MediaStream, source: "system" | "microphone") => {
       const audioTracks = stream.getAudioTracks()
       if (audioTracks.length === 0) {
         onError?.("No audio track found. Make sure to check 'Share system audio' when sharing your screen.")
@@ -180,6 +171,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
 
       streamRef.current = stream
       isRecordingRef.current = true
+      setAudioSource(source)
       setDuration(0)
       timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000)
       setStatus("recording")
@@ -189,36 +181,96 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
         return
       }
 
-      // Set up AudioContext to pipe audio to ScriptProcessor → Whisper worker
+      // Set up AudioContext → ScriptProcessor → Whisper worker
       const audioCtx = new AudioContext({ sampleRate: 16000 })
       audioContextRef.current = audioCtx
       const audioOnlyStream = new MediaStream(audioTracks)
-      const source = audioCtx.createMediaStreamSource(audioOnlyStream)
+      const sourceNode = audioCtx.createMediaStreamSource(audioOnlyStream)
       const processor = audioCtx.createScriptProcessor(4096, 1, 1)
       processorRef.current = processor
 
       processor.onaudioprocess = (e) => {
         if (!isRecordingRef.current) return
-        const inputData = e.inputBuffer.getChannelData(0)
-        audioBufferRef.current.push(new Float32Array(inputData))
+        audioBufferRef.current.push(new Float32Array(e.inputBuffer.getChannelData(0)))
       }
 
-      source.connect(processor)
+      sourceNode.connect(processor)
       processor.connect(audioCtx.destination)
-
-      // Send audio to Whisper every 5 seconds
       chunkIntervalRef.current = setInterval(processAudioChunk, 5000)
 
-      // Stop when user stops screen share
+      // Stop when user ends screen share from browser UI
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         if (isRecordingRef.current) stopRef.current()
       })
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error"
-      onError?.(msg.includes("Permission denied") ? "Screen share permission denied." : msg)
+      // Also stop when any audio track ends (microphone disconnect, etc.)
+      stream.getAudioTracks()[0]?.addEventListener("ended", () => {
+        if (isRecordingRef.current) stopRef.current()
+      })
+    },
+    [useWebSpeech, startWebSpeech, processAudioChunk, onError, stopRef]
+  )
+
+  const start = useCallback(async () => {
+    setStatus("loading_model")
+    // 1) Try system audio capture via getDisplayMedia
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          sampleRate: 16000,
+        },
+      })
+      startFromStream(stream, "system")
+      return
+    } catch (displayErr: unknown) {
+      const msg = displayErr instanceof Error ? displayErr.message : String(displayErr)
+      const isPermissionsPolicyError =
+        msg.toLowerCase().includes("permissions policy") ||
+        msg.toLowerCase().includes("disallowed") ||
+        msg.toLowerCase().includes("not allowed") ||
+        msg.toLowerCase().includes("notallowederror")
+      const isExplicitDeny = msg.toLowerCase().includes("permission denied") || msg.toLowerCase().includes("dismissed")
+
+      if (isExplicitDeny) {
+        // User actively cancelled the screen picker — don't fall back silently
+        onError?.("Screen share cancelled. Click Start to try again.")
+        setStatus("ready")
+        return
+      }
+
+      if (!isPermissionsPolicyError) {
+        // Unexpected error — surface it
+        onError?.(msg)
+        setStatus("ready")
+        return
+      }
+
+      // Permissions policy blocked getDisplayMedia (e.g. inside an iframe / v0 preview)
+      // Fall back to microphone automatically
+    }
+
+    // 2) Fall back to microphone via getUserMedia
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000,
+        },
+      })
+      startFromStream(stream, "microphone")
+    } catch (micErr: unknown) {
+      const msg = micErr instanceof Error ? micErr.message : String(micErr)
+      onError?.(
+        msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")
+          ? "Microphone permission denied. Please allow microphone access and try again."
+          : msg
+      )
       setStatus("ready")
     }
-  }, [useWebSpeech, startWebSpeech, processAudioChunk, onError, stopRef])
+  }, [startFromStream, onError])
 
   const stop: () => void = useCallback(() => {
     isRecordingRef.current = false
@@ -283,6 +335,7 @@ export function useTranscription({ onTranscript, onError }: UseTranscriptionOpti
     interimTranscript,
     isRecording,
     duration,
+    audioSource,
     start,
     stop,
     reset,

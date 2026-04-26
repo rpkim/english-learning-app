@@ -46,7 +46,7 @@ export function EnglishLearningApp() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
 
   // Transcription hook
-  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, start, stop, reset, setTranscript } =
+  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, start, stop, reset, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
     })
@@ -292,6 +292,7 @@ export function EnglishLearningApp() {
                 isSaving={isSaving}
                 isExtracting={isExtracting}
                 duration={duration}
+                audioSource={audioSource}
                 onStart={start}
                 onStop={stop}
                 onSave={handleSave}

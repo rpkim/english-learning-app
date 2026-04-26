@@ -2,7 +2,8 @@
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Square, Mic, Loader2, Save } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Square, Mic, Loader2, Save, Monitor } from "lucide-react"
 
 interface RecordingControlsProps {
   isRecording: boolean
@@ -10,6 +11,7 @@ interface RecordingControlsProps {
   isSaving: boolean
   isExtracting: boolean
   duration: number
+  audioSource?: "system" | "microphone" | null
   onStart: () => void
   onStop: () => void
   onSave: () => void
@@ -28,6 +30,7 @@ export function RecordingControls({
   isSaving,
   isExtracting,
   duration,
+  audioSource,
   onStart,
   onStop,
   onSave,
@@ -50,6 +53,26 @@ export function RecordingControls({
           )}
           {formatDuration(duration)}
         </div>
+      )}
+
+      {/* Audio source badge — shown while recording */}
+      {isRecording && audioSource && (
+        <Badge
+          variant="outline"
+          className={cn(
+            "gap-1 text-xs border",
+            audioSource === "system"
+              ? "text-primary border-primary/30 bg-primary/5"
+              : "text-accent-foreground border-accent/40 bg-accent/10"
+          )}
+        >
+          {audioSource === "system" ? (
+            <Monitor className="h-3 w-3" />
+          ) : (
+            <Mic className="h-3 w-3" />
+          )}
+          {audioSource === "system" ? "System audio" : "Microphone"}
+        </Badge>
       )}
 
       {/* Start / Stop button */}
