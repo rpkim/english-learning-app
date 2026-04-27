@@ -53,10 +53,12 @@ interface AnyWindow extends Window {
 interface UseTranscriptionOptions {
   onTranscript?: (text: string) => void
   onError?: (msg: string) => void
-  whisperModel?: "tiny" | "base"
+  whisperModel?: "tiny" | "base" | "small" | "medium"
 }
 
 const TARGET_SAMPLE_RATE = 16000
+const MAX_BACKLOG_SECONDS = 12
+const MAX_BACKLOG_SAMPLES = TARGET_SAMPLE_RATE * MAX_BACKLOG_SECONDS
 
 function hasWebSpeechSupport() {
   if (typeof window === "undefined") return false
@@ -97,13 +99,14 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioBufferRef = useRef<Float32Array[]>([])
   const inputSampleRateRef = useRef(16000)
-  const whisperModelRef = useRef<"tiny" | "base">(whisperModel)
+  const whisperModelRef = useRef<"tiny" | "base" | "small" | "medium">(whisperModel)
   const startedAtRef = useRef<number>(0)
   const audioFrameCountRef = useRef(0)
   const noAudioWarnTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isRecordingRef = useRef(false)
   const chunkIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const workerReadyRef = useRef(false)
+  const workerBusyRef = useRef(false)
   // Ref to stable stop fn to avoid circular useCallback deps
   const stopRef = useRef<() => void>(() => {})
 
@@ -133,6 +136,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           setDebugInfo((prev) => ({ ...prev, workerState: "ready", lastWorkerError: null }))
           setStatus("ready")
         } else if (type === "result" && text) {
+          workerBusyRef.current = false
           const clean = text.trim()
           if (clean && clean !== "[BLANK_AUDIO]") {
             setTranscript((prev) => appendNonDuplicateTranscript(prev, clean))
@@ -140,11 +144,13 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
             onTranscriptRef.current?.(clean)
           }
         } else if (type === "error") {
+          workerBusyRef.current = false
           setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: message ?? "Unknown worker error" }))
           onErrorRef.current?.(message)
         }
       }
       worker.onerror = () => {
+        workerBusyRef.current = false
         workerReadyRef.current = false
         setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: "Worker runtime error" }))
         if (hasWebSpeechSupport()) {
@@ -225,6 +231,21 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     if (!workerRef.current || audioBufferRef.current.length === 0) return
     // Don't flush buffered audio until the Whisper model is ready.
     if (!workerReadyRef.current) return
+    // If worker is still processing previous chunk, keep buffering but trim backlog.
+    if (workerBusyRef.current) {
+      const totalLength = audioBufferRef.current.reduce((sum, buf) => sum + buf.length, 0)
+      if (totalLength > MAX_BACKLOG_SAMPLES) {
+        const all = new Float32Array(totalLength)
+        let o = 0
+        for (const b of audioBufferRef.current) {
+          all.set(b, o)
+          o += b.length
+        }
+        const trimmed = all.slice(all.length - MAX_BACKLOG_SAMPLES)
+        audioBufferRef.current = [trimmed]
+      }
+      return
+    }
     const totalLength = audioBufferRef.current.reduce((sum, buf) => sum + buf.length, 0)
     const combined = new Float32Array(totalLength)
     let offset = 0
@@ -241,9 +262,15 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
         ? combined
         : downsampleTo16kHz(combined, inputRate)
 
+    const limitedAudio =
+      preparedAudio.length > MAX_BACKLOG_SAMPLES
+        ? preparedAudio.slice(preparedAudio.length - MAX_BACKLOG_SAMPLES)
+        : preparedAudio
+
+    workerBusyRef.current = true
     workerRef.current.postMessage(
-      { type: "transcribe", audio: preparedAudio, samplingRate: TARGET_SAMPLE_RATE },
-      [preparedAudio.buffer]
+      { type: "transcribe", audio: limitedAudio, samplingRate: TARGET_SAMPLE_RATE, model: whisperModelRef.current },
+      [limitedAudio.buffer]
     )
     setDebugInfo((prev) => ({ ...prev, chunksSent: prev.chunksSent + 1 }))
   }, [])
