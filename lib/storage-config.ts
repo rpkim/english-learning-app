@@ -1,5 +1,5 @@
 export type StorageMode = "supabase" | "local"
-export type WhisperModel = "tiny" | "base"
+export type WhisperModel = "tiny" | "base" | "small" | "medium"
 
 export interface StorageConfig {
   mode: StorageMode

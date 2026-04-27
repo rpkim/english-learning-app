@@ -13,7 +13,13 @@ let transcriber = null
 let loadedModelId = null
 
 async function loadModel(model = "tiny") {
-  const modelId = model === "base" ? "Xenova/whisper-base.en" : "Xenova/whisper-tiny.en"
+  const modelMap = {
+    tiny: "Xenova/whisper-tiny.en",
+    base: "Xenova/whisper-base.en",
+    small: "Xenova/whisper-small.en",
+    medium: "Xenova/whisper-medium.en",
+  }
+  const modelId = modelMap[model] || modelMap.tiny
   if (transcriber && loadedModelId === modelId) {
     self.postMessage({ type: "ready" })
     return
@@ -46,7 +52,7 @@ async function loadModel(model = "tiny") {
 }
 
 self.addEventListener("message", async (event) => {
-  const { type, audio, samplingRate } = event.data
+  const { type, audio, samplingRate, model } = event.data
 
   if (type === "load") {
     await loadModel(event.data.model)
@@ -59,10 +65,12 @@ self.addEventListener("message", async (event) => {
       return
     }
     try {
+      const effectiveModel = model || "tiny"
+      const isLargeModel = effectiveModel === "small" || effectiveModel === "medium"
       const result = await transcriber(audio, {
         sampling_rate: typeof samplingRate === "number" ? samplingRate : 16000,
-        // Smaller windows improve perceived "real-time" updates.
-        chunk_length_s: 5,
+        // Keep shorter windows for lower perceived latency.
+        chunk_length_s: isLargeModel ? 4 : 5,
         stride_length_s: 1,
         return_timestamps: false,
       })

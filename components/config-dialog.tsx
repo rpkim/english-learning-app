@@ -180,10 +180,12 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
             <SelectContent>
               <SelectItem value="tiny">Whisper Tiny (faster)</SelectItem>
               <SelectItem value="base">Whisper Base (more accurate)</SelectItem>
+              <SelectItem value="small">Whisper Small (higher quality, slower)</SelectItem>
+              <SelectItem value="medium">Whisper Medium (best quality, much slower)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-muted-foreground">
-            Base improves accuracy but uses more memory and can be slower.
+            Bigger models improve accuracy but increase latency and memory usage.
           </p>
         </div>
 
