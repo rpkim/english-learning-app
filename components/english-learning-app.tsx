@@ -11,6 +11,7 @@ import { ConfigDialog } from "@/components/config-dialog"
 import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Toaster } from "@/components/ui/sonner"
@@ -44,6 +45,7 @@ import {
   Maximize2,
   EyeOff,
   FileDown,
+  Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getStorageConfig, saveStorageConfig, StorageConfig } from "@/lib/storage-config"
@@ -67,10 +69,17 @@ import {
 } from "@/lib/local-storage-db"
 
 export function EnglishLearningApp() {
+  const UNLOCK_SESSION_KEY = "surviveenglish_app_unlocked"
+
   // Storage config
   const [storageConfig, setStorageConfig] = useState<StorageConfig>(() => getStorageConfig())
   const [showConfig, setShowConfig] = useState(false)
   const isLocal = storageConfig.mode === "local"
+  const [isAuthReady, setIsAuthReady] = useState(false)
+  const [isUnlocked, setIsUnlocked] = useState(false)
+  const [unlockPassword, setUnlockPassword] = useState("")
+  const [isUnlocking, setIsUnlocking] = useState(false)
+  const [unlockError, setUnlockError] = useState<string | null>(null)
 
   // Transcription state
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
@@ -117,6 +126,61 @@ export function EnglishLearningApp() {
       onError: (msg) => toast.error(msg),
       whisperModel: storageConfig.whisperModel,
     })
+
+  useEffect(() => {
+    let cancelled = false
+    const initAuth = async () => {
+      if (typeof window === "undefined") return
+      try {
+        const res = await fetch("/api/auth/unlock", { method: "GET" })
+        const data = await res.json().catch(() => ({}))
+        const enabled = data?.enabled === true
+        if (cancelled) return
+        if (!enabled) {
+          setIsUnlocked(true)
+          setIsAuthReady(true)
+          return
+        }
+      } catch {
+        // If status check fails, fall back to lock screen behavior.
+      }
+
+      if (cancelled) return
+      const unlocked = window.sessionStorage.getItem(UNLOCK_SESSION_KEY) === "true"
+      setIsUnlocked(unlocked)
+      setIsAuthReady(true)
+    }
+    void initAuth()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleUnlock = useCallback(async () => {
+    setUnlockError(null)
+    setIsUnlocking(true)
+    try {
+      const res = await fetch("/api/auth/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: unlockPassword }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.ok !== true) {
+        setUnlockError(typeof data?.error === "string" ? data.error : "Failed to unlock")
+        return
+      }
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(UNLOCK_SESSION_KEY, "true")
+      }
+      setIsUnlocked(true)
+      setUnlockPassword("")
+    } catch {
+      setUnlockError("Failed to unlock")
+    } finally {
+      setIsUnlocking(false)
+    }
+  }, [unlockPassword])
 
   // Reload data when storage mode changes
   useEffect(() => {
@@ -998,6 +1062,39 @@ export function EnglishLearningApp() {
       setManualLayout("auto")
     }
   }, [desktopViewMode])
+
+  if (!isAuthReady) {
+    return <div className="h-screen bg-background" />
+  }
+
+  if (!isUnlocked) {
+    return (
+      <div className="h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm rounded-lg border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Lock className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Enter app password</h2>
+          </div>
+          <Input
+            type="password"
+            value={unlockPassword}
+            onChange={(e) => setUnlockPassword(e.target.value)}
+            placeholder="Password"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                void handleUnlock()
+              }
+            }}
+          />
+          {unlockError && <p className="text-xs text-destructive">{unlockError}</p>}
+          <Button className="w-full" onClick={() => void handleUnlock()} disabled={isUnlocking}>
+            {isUnlocking ? "Checking..." : "Unlock"}
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
