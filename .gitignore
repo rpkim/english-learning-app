@@ -15,3 +15,11 @@ node_modules
 .next/
 .DS_Store
 .vercel
+
+# Electron build/dev artifacts
+dist-desktop/
+*.dmg
+*.blockmap
+latest*.yml
+builder-debug.yml
+builder-effective-config.yaml
