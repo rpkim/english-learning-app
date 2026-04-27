@@ -1,14 +1,13 @@
 "use client"
 
-import { Conversation } from "@/lib/types"
+import { Conversation, ConversationGroup } from "@/lib/types"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDistanceToNow } from "date-fns"
-import { Clock, FileText, ChevronRight, Pencil, Trash2, FolderPlus, Check } from "lucide-react"
+import { Clock, FileText, ChevronRight, Pencil, Trash2, FolderPlus, FolderPen, Archive, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMemo, useState } from "react"
-import { ConversationGroup } from "@/lib/types"
 
 interface ConversationHistoryProps {
   conversations: Conversation[]
@@ -18,9 +17,14 @@ interface ConversationHistoryProps {
   onSelect: (conv: Conversation) => void
   onRename: (conv: Conversation, nextTitle: string) => void | Promise<void>
   onDelete: (conv: Conversation) => void | Promise<void>
-  onCreateGroup: (name: string, conversationIds: string[]) => void | Promise<void>
+  onCreateGroup: (name: string) => void | Promise<void>
+  onRenameGroup: (groupId: string, nextName: string) => void | Promise<void>
   onDeleteGroup: (groupId: string) => void | Promise<void>
+  onArchiveGroup: (groupId: string) => void | Promise<void>
+  onRestoreGroup: (groupId: string) => void | Promise<void>
   onSelectGroup: (groupId: string | null) => void
+  onMoveConversationToGroup: (conversationId: string, groupId: string | null) => void | Promise<void>
+  workspaceStats: Record<string, { totalWords: number; masteredWords: number }>
 }
 
 function formatDuration(seconds: number) {
@@ -40,32 +44,43 @@ export function ConversationHistory({
   onRename,
   onDelete,
   onCreateGroup,
+  onRenameGroup,
   onDeleteGroup,
+  onArchiveGroup,
+  onRestoreGroup,
   onSelectGroup,
+  onMoveConversationToGroup,
+  workspaceStats,
 }: ConversationHistoryProps) {
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([])
+  const [draggingConversationId, setDraggingConversationId] = useState<string | null>(null)
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
 
-  const visibleConversations = useMemo(() => {
-    if (!selectedGroupId) return conversations
-    const group = groups.find((g) => g.id === selectedGroupId)
-    if (!group) return conversations
-    const set = new Set(group.conversation_ids)
-    return conversations.filter((c) => set.has(c.id))
-  }, [conversations, groups, selectedGroupId])
-
-  const toggleSelected = (id: string) => {
-    setSelectedConversationIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
+  const groupedConversationIds = useMemo(
+    () => new Set(groups.flatMap((g) => g.conversation_ids)),
+    [groups]
+  )
+  const unclassifiedConversations = useMemo(
+    () => conversations.filter((c) => !groupedConversationIds.has(c.id)),
+    [conversations, groupedConversationIds]
+  )
+  const groupedSections = useMemo(
+    () =>
+      groups.filter((g) => !g.archived_at).map((g) => {
+        const set = new Set(g.conversation_ids)
+        return { group: g, conversations: conversations.filter((c) => set.has(c.id)) }
+      }),
+    [groups, conversations]
+  )
+  const archivedGroups = useMemo(
+    () => groups.filter((g) => Boolean(g.archived_at)),
+    [groups]
+  )
 
   const handleCreateGroup = async () => {
-    if (selectedConversationIds.length < 2) return
-    const defaultName = `Group ${new Date().toLocaleDateString()}`
-    const name = window.prompt("Group name", defaultName)
+    const defaultName = `Workspace ${new Date().toLocaleDateString()}`
+    const name = window.prompt("Workspace name", defaultName)
     if (!name || !name.trim()) return
-    await onCreateGroup(name.trim(), selectedConversationIds)
-    setSelectedConversationIds([])
-    setSelectionMode(false)
+    await onCreateGroup(name.trim())
   }
 
   if (conversations.length === 0) {
@@ -79,153 +94,303 @@ export function ConversationHistory({
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col gap-1 pr-2">
+      <div className="flex flex-col gap-2 pr-2">
         <div className="flex items-center justify-between gap-2 px-1 py-1">
-          <div className="flex items-center gap-1 flex-wrap">
-            <Button
-              size="sm"
-              variant={selectedGroupId === null ? "secondary" : "ghost"}
-              className="h-6 text-[11px] px-2"
-              onClick={() => onSelectGroup(null)}
-            >
-              All
-            </Button>
-            {groups.map((group) => (
-              <div key={group.id} className="flex items-center gap-0.5">
-                <Button
-                  size="sm"
-                  variant={selectedGroupId === group.id ? "secondary" : "ghost"}
-                  className="h-6 text-[11px] px-2"
-                  onClick={() => onSelectGroup(group.id)}
-                  title={group.name}
-                >
-                  {group.name}
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-5 w-5"
-                  onClick={() => void onDeleteGroup(group.id)}
-                  title="Delete group"
-                >
-                  <Trash2 className="h-3 w-3 text-muted-foreground" />
-                </Button>
-              </div>
-            ))}
-          </div>
+          <div className="text-xs text-muted-foreground">Drag sessions between workspaces.</div>
           <div className="flex items-center gap-1">
             <Button
               size="sm"
-              variant={selectionMode ? "secondary" : "outline"}
+              variant="outline"
               className="h-6 text-[11px] px-2"
-              onClick={() => {
-                setSelectionMode((v) => !v)
-                setSelectedConversationIds([])
-              }}
+              onClick={() => void handleCreateGroup()}
             >
-              Select
+              <FolderPlus className="h-3 w-3 mr-1" />
+              Add
             </Button>
-            {selectionMode && (
-              <Button
-                size="sm"
-                className="h-6 text-[11px] px-2 gap-1"
-                onClick={() => void handleCreateGroup()}
-                disabled={selectedConversationIds.length < 2}
-              >
-                <FolderPlus className="h-3 w-3" />
-                Group
-              </Button>
-            )}
           </div>
         </div>
 
-        {visibleConversations.map((conv) => (
-          <div
-            key={conv.id}
-            role="button"
-            tabIndex={0}
-            className={cn(
-              "w-full h-auto py-2.5 px-3 flex flex-col items-start gap-1 text-left rounded-lg cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selectedId === conv.id && "bg-primary/10 text-primary"
-            )}
-            onClick={() => {
-              if (selectionMode) {
-                toggleSelected(conv.id)
-                return
-              }
-              onSelect(conv)
+        <Section
+          title="Unclassified"
+          count={unclassifiedConversations.length}
+          selected={selectedGroupId === "__ungrouped__"}
+          dragActive={dragOverGroupId === "__ungrouped__"}
+          onSelect={() => onSelectGroup("__ungrouped__")}
+          onDragOver={(e) => {
+            if (!draggingConversationId) return
+            e.preventDefault()
+            setDragOverGroupId("__ungrouped__")
+          }}
+          onDragLeave={() => {
+            if (dragOverGroupId === "__ungrouped__") setDragOverGroupId(null)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const conversationId = e.dataTransfer.getData("text/conversation-id") || draggingConversationId
+            if (!conversationId) return
+            void onMoveConversationToGroup(conversationId, null)
+            setDraggingConversationId(null)
+            setDragOverGroupId(null)
+          }}
+        >
+          {unclassifiedConversations.map((conv) => renderRow(conv))}
+        </Section>
+
+        {groupedSections.map(({ group, conversations: inGroup }) => (
+          <Section
+            key={group.id}
+            title={group.name}
+            count={inGroup.length}
+            selected={selectedGroupId === group.id}
+            dragActive={dragOverGroupId === group.id}
+            onSelect={() => onSelectGroup(group.id)}
+            onRename={() => {
+              const nextName = window.prompt("Edit workspace name", group.name)
+              if (!nextName) return
+              const trimmed = nextName.trim()
+              if (!trimmed || trimmed === group.name) return
+              void onRenameGroup(group.id, trimmed)
             }}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter" && e.key !== " ") return
+            onDelete={() => void onDeleteGroup(group.id)}
+            onArchive={() => void onArchiveGroup(group.id)}
+            totalWords={workspaceStats[group.id]?.totalWords ?? 0}
+            masteredWords={workspaceStats[group.id]?.masteredWords ?? 0}
+            onDragOver={(e) => {
+              if (!draggingConversationId) return
               e.preventDefault()
-              if (selectionMode) {
-                toggleSelected(conv.id)
-                return
-              }
-              onSelect(conv)
+              setDragOverGroupId(group.id)
+            }}
+            onDragLeave={() => {
+              if (dragOverGroupId === group.id) setDragOverGroupId(null)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              const conversationId = e.dataTransfer.getData("text/conversation-id") || draggingConversationId
+              if (!conversationId) return
+              void onMoveConversationToGroup(conversationId, group.id)
+              setDraggingConversationId(null)
+              setDragOverGroupId(null)
             }}
           >
-            <div className="flex items-center justify-between w-full gap-2">
-              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                {selectionMode && (
-                  <span className={cn(
-                    "inline-flex h-4 w-4 items-center justify-center rounded border",
-                    selectedConversationIds.includes(conv.id) ? "bg-primary border-primary text-primary-foreground" : "border-border"
-                  )}>
-                    {selectedConversationIds.includes(conv.id) && <Check className="h-3 w-3" />}
-                  </span>
-                )}
-                <span className="text-sm font-medium truncate flex-1">{conv.title}</span>
-              </div>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const nextTitle = window.prompt("Edit session title", conv.title)
-                    if (!nextTitle) return
-                    const trimmed = nextTitle.trim()
-                    if (!trimmed || trimmed === conv.title) return
-                    void onRename(conv, trimmed)
-                  }}
-                  title="Rename session"
-                >
-                  <Pencil className="h-3 w-3 text-muted-foreground" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const ok = window.confirm(`Delete "${conv.title}"? This cannot be undone.`)
-                    if (!ok) return
-                    void onDelete(conv)
-                  }}
-                  title="Delete session"
-                >
-                  <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                </Button>
-                {!selectionMode && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
-              </div>
+            {inGroup.map((conv) => renderRow(conv))}
+          </Section>
+        ))}
+
+        {archivedGroups.length > 0 && (
+          <div className="rounded-lg border px-2 py-1 border-border/60">
+            <div className="flex items-center justify-between px-1 py-1">
+              <div className="text-sm font-medium text-muted-foreground">Archived</div>
+              <Badge variant="outline" className="h-4 px-1 text-[10px]">{archivedGroups.length}</Badge>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{formatDistanceToNow(new Date(conv.created_at), { addSuffix: true })}</span>
-              {formatDuration(conv.duration_seconds) && (
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {formatDuration(conv.duration_seconds)}
-                </span>
-              )}
-              {groups.some((g) => g.conversation_ids.includes(conv.id)) && (
-                <Badge variant="outline" className="h-4 px-1 text-[10px]">Grouped</Badge>
-              )}
+            <div className="ml-1 mt-1 flex flex-col gap-1">
+              {archivedGroups.map((group) => (
+                <div key={group.id} className="flex items-center justify-between rounded-md border border-border/70 px-2 py-1">
+                  <span className="text-xs text-muted-foreground truncate">{group.name}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => void onRestoreGroup(group.id)}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Restore
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
-        ))}
+        )}
       </div>
     </ScrollArea>
+  )
+
+  function renderRow(conv: Conversation) {
+    return (
+      <div
+        key={conv.id}
+        role="button"
+        tabIndex={0}
+        className={cn(
+          "w-full h-auto py-2.5 px-3 flex flex-col items-start gap-1 text-left rounded-lg cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border border-transparent",
+          selectedId === conv.id && "bg-primary/10 text-primary border-primary/30",
+          groupedConversationIds.has(conv.id) && "bg-card/60 border-border"
+        )}
+        draggable
+        onDragStart={(e) => {
+          setDraggingConversationId(conv.id)
+          e.dataTransfer.setData("text/conversation-id", conv.id)
+          e.dataTransfer.effectAllowed = "move"
+        }}
+        onDragEnd={() => {
+          setDraggingConversationId(null)
+          setDragOverGroupId(null)
+        }}
+        onClick={() => {
+          onSelect(conv)
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return
+          e.preventDefault()
+          onSelect(conv)
+        }}
+      >
+        <div className="flex items-center justify-between w-full gap-2">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className="text-sm font-medium truncate flex-1">{conv.title}</span>
+          </div>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              onClick={(e) => {
+                e.stopPropagation()
+                const nextTitle = window.prompt("Edit session title", conv.title)
+                if (!nextTitle) return
+                const trimmed = nextTitle.trim()
+                if (!trimmed || trimmed === conv.title) return
+                void onRename(conv, trimmed)
+              }}
+              title="Rename session"
+            >
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              onClick={(e) => {
+                e.stopPropagation()
+                const ok = window.confirm(`Delete "${conv.title}"? This cannot be undone.`)
+                if (!ok) return
+                void onDelete(conv)
+              }}
+              title="Delete session"
+            >
+              <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+            </Button>
+            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{formatDistanceToNow(new Date(conv.created_at), { addSuffix: true })}</span>
+          {formatDuration(conv.duration_seconds) && (
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {formatDuration(conv.duration_seconds)}
+            </span>
+          )}
+          {groups.some((g) => g.conversation_ids.includes(conv.id)) && (
+            <Badge variant="outline" className="h-4 px-1 text-[10px] border-primary/30 bg-primary/5 text-primary">
+              Grouped
+            </Badge>
+          )}
+        </div>
+      </div>
+    )
+  }
+}
+
+interface SectionProps {
+  title: string
+  count: number
+  selected: boolean
+  dragActive: boolean
+  children: React.ReactNode
+  onSelect: () => void
+  onRename?: () => void
+  onDelete?: () => void
+  onArchive?: () => void
+  totalWords?: number
+  masteredWords?: number
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void
+  onDragLeave: () => void
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void
+}
+
+function Section({
+  title,
+  count,
+  selected,
+  dragActive,
+  children,
+  onSelect,
+  onRename,
+  onDelete,
+  onArchive,
+  totalWords = 0,
+  masteredWords = 0,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: SectionProps) {
+  return (
+    <div className={cn("rounded-lg border px-2 py-1", selected ? "border-primary/40 bg-primary/5" : "border-border/60")}>
+      <div
+        className={cn(
+          "flex items-center justify-between rounded-md px-1 py-1 cursor-pointer",
+          selected && "text-primary font-semibold",
+          dragActive && "bg-primary/15 ring-1 ring-primary/40"
+        )}
+        onClick={onSelect}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <div className="text-sm">{title}</div>
+        <div className="flex items-center gap-1">
+          <Badge variant="outline" className="h-4 px-1 text-[10px]">{count}</Badge>
+          <Badge variant="outline" className="h-4 px-1 text-[10px]">Words {totalWords}</Badge>
+          <Badge variant="outline" className="h-4 px-1 text-[10px]">Mastered {masteredWords}</Badge>
+          {onRename && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRename()
+              }}
+              title="Rename workspace"
+            >
+              <FolderPen className="h-3 w-3 text-muted-foreground" />
+            </Button>
+          )}
+          {onDelete && (
+            <>
+              {onArchive && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onArchive()
+                  }}
+                  title="Archive workspace"
+                >
+                  <Archive className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              )}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              title="Delete group"
+            >
+              <Trash2 className="h-3 w-3 text-muted-foreground" />
+            </Button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="ml-3 mt-1 border-l border-dashed border-border/70 pl-2 flex flex-col gap-1">
+        {children}
+      </div>
+    </div>
   )
 }

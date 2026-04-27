@@ -94,7 +94,9 @@ export function localGetConversationGroups(): ConversationGroup[] {
     const raw = localStorage.getItem(GROUP_KEY)
     if (!raw) return []
     const items: ConversationGroup[] = JSON.parse(raw)
-    return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return items
+      .map((g) => ({ ...g, archived_at: g.archived_at ?? null }))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   } catch {
     return []
   }
@@ -106,6 +108,7 @@ export function localCreateConversationGroup(name: string, conversationIds: stri
     name: name.trim(),
     conversation_ids: Array.from(new Set(conversationIds)),
     created_at: new Date().toISOString(),
+    archived_at: null,
   }
   const existing = localGetConversationGroups()
   localStorage.setItem(GROUP_KEY, JSON.stringify([group, ...existing]))
@@ -115,6 +118,47 @@ export function localCreateConversationGroup(name: string, conversationIds: stri
 export function localDeleteConversationGroup(id: string): void {
   const groups = localGetConversationGroups().filter((g) => g.id !== id)
   localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+}
+
+export function localUpdateConversationGroupName(id: string, name: string): ConversationGroup | null {
+  const groups = localGetConversationGroups()
+  const idx = groups.findIndex((g) => g.id === id)
+  if (idx === -1) return null
+  const trimmed = name.trim()
+  if (!trimmed) return null
+  groups[idx] = { ...groups[idx], name: trimmed }
+  localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+  return groups[idx]
+}
+
+export function localMoveConversationToGroup(conversationId: string, targetGroupId: string | null): ConversationGroup[] {
+  const groups = localGetConversationGroups().map((g) => {
+    const filtered = g.conversation_ids.filter((cid) => cid !== conversationId)
+    if (targetGroupId && g.id === targetGroupId) {
+      return { ...g, conversation_ids: [...filtered, conversationId] }
+    }
+    return { ...g, conversation_ids: filtered }
+  })
+  localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+  return groups
+}
+
+export function localArchiveConversationGroup(id: string): ConversationGroup | null {
+  const groups = localGetConversationGroups()
+  const idx = groups.findIndex((g) => g.id === id)
+  if (idx === -1) return null
+  groups[idx] = { ...groups[idx], archived_at: new Date().toISOString() }
+  localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+  return groups[idx]
+}
+
+export function localRestoreConversationGroup(id: string): ConversationGroup | null {
+  const groups = localGetConversationGroups()
+  const idx = groups.findIndex((g) => g.id === id)
+  if (idx === -1) return null
+  groups[idx] = { ...groups[idx], archived_at: null }
+  localStorage.setItem(GROUP_KEY, JSON.stringify(groups))
+  return groups[idx]
 }
 
 // ── Vocabulary ───────────────────────────────────────────────

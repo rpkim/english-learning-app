@@ -11,11 +11,13 @@ import { cn } from "@/lib/utils"
 const TYPE_COLORS: Record<string, string> = {
   word: "bg-primary/10 text-primary border-primary/20",
   idiom: "bg-accent/10 text-accent-foreground border-accent/20",
+  slang: "bg-orange-500/10 text-orange-700 border-orange-300",
 }
 
 const TYPE_LABELS: Record<string, string> = {
   word: "Word",
   idiom: "Idiom",
+  slang: "Slang",
 }
 
 interface VocabularyCardProps {
@@ -26,6 +28,18 @@ interface VocabularyCardProps {
   isTranslating: boolean
 }
 
+function getKoreanTranslationText(raw: unknown): string {
+  if (typeof raw === "string") return raw
+  if (!raw || typeof raw !== "object") return ""
+
+  const translationObj = raw as Record<string, unknown>
+  if (typeof translationObj.korean_translation === "string") return translationObj.korean_translation
+  if (typeof translationObj.meaning === "string") return translationObj.meaning
+
+  const usage = typeof translationObj.usage === "string" ? translationObj.usage : ""
+  return usage
+}
+
 export function VocabularyCard({
   item,
   onDelete,
@@ -34,6 +48,7 @@ export function VocabularyCard({
   isTranslating,
 }: VocabularyCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const koreanTranslationText = getKoreanTranslationText(item.korean_translation)
 
   return (
     <Card
@@ -56,9 +71,9 @@ export function VocabularyCard({
               {TYPE_LABELS[item.type] ?? item.type}
             </Badge>
             </div>
-            {item.korean_translation && (
+            {koreanTranslationText && (
               <Badge className="text-xs h-4 px-1.5 w-fit max-w-full bg-korean text-korean-foreground border-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                {item.korean_translation}
+                {koreanTranslationText}
               </Badge>
             )}
           </div>
@@ -76,7 +91,7 @@ export function VocabularyCard({
                 <Circle className="h-3.5 w-3.5 text-muted-foreground" />
               )}
             </Button>
-            {!item.korean_translation && (
+            {!koreanTranslationText && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -116,10 +131,16 @@ export function VocabularyCard({
 
       {expanded && (
         <CardContent className="px-1.5 pb-0 pt-0 space-y-0.5 border-t border-border mt-0">
+          {item.definition && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Meaning</p>
+              <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{item.definition}</p>
+            </div>
+          )}
           {item.example_sentence && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Example</p>
-              <p className="text-xs text-foreground italic leading-relaxed">&ldquo;{item.example_sentence}&rdquo;</p>
+              <p className="text-xs text-foreground italic leading-relaxed whitespace-pre-line">&ldquo;{item.example_sentence}&rdquo;</p>
             </div>
           )}
           {item.context && (
@@ -128,15 +149,15 @@ export function VocabularyCard({
               <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-muted rounded px-2 py-1">{item.context}</p>
             </div>
           )}
-          {item.korean_translation && (
+          {koreanTranslationText && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Korean</p>
               <p className="text-sm font-semibold text-korean">
-                {item.korean_translation}
+                {koreanTranslationText}
               </p>
             </div>
           )}
-          {!item.korean_translation && (
+          {!koreanTranslationText && (
             <Button
               size="sm"
               variant="outline"

@@ -17,6 +17,7 @@ interface RecordingControlsProps {
   onSave: () => void
   onNew: () => void
   hasTranscript: boolean
+  isSaved?: boolean
 }
 
 function formatDuration(seconds: number) {
@@ -37,6 +38,7 @@ export function RecordingControls({
   onSave,
   onNew,
   hasTranscript,
+  isSaved = false,
 }: RecordingControlsProps) {
   return (
     <div className="flex items-center gap-3">
@@ -121,7 +123,7 @@ export function RecordingControls({
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {isExtracting ? "Extracting..." : isSaving ? "Saving..." : "Save & Extract"}
+            {isExtracting ? "Extracting..." : isSaving ? "Saving..." : isSaved ? "Saved" : "Save & Extract"}
           </Button>
         </>
       )}

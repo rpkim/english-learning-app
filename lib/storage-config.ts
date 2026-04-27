@@ -6,6 +6,7 @@ export interface StorageConfig {
   supabaseUrl: string
   supabaseAnonKey: string
   whisperModel: WhisperModel
+  topWordExcludes: string[]
 }
 
 const CONFIG_KEY = "englishlens_storage_config"
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG: StorageConfig = {
   supabaseUrl: "",
   supabaseAnonKey: "",
   whisperModel: "tiny",
+  topWordExcludes: [],
 }
 
 export function getStorageConfig(): StorageConfig {
