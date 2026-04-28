@@ -13,6 +13,8 @@ interface TranscriptPanelProps {
   vocabulary: VocabularyItem[]
   onTranscriptChange: (value: string) => void
   onTextSelect: (text: string) => void
+  onTranslateUtterance?: (text: string) => void | Promise<void>
+  diarizedItems?: Array<{ text: string; speaker: "A" | "B" }>
 }
 
 export function TranscriptPanel({
@@ -23,6 +25,8 @@ export function TranscriptPanel({
   vocabulary,
   onTranscriptChange,
   onTextSelect,
+  onTranslateUtterance: _onTranslateUtterance,
+  diarizedItems: _diarizedItems = [],
 }: TranscriptPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -107,7 +111,7 @@ function renderHighlightedTranscript(text: string, vocabulary: VocabularyItem[])
     return (
       <span
         key={`${chunk}-${idx}`}
-        className={cn("inline-block rounded-full border px-1.5 py-0.5 mx-[1px]", colorClass)}
+        className={cn("inline-block rounded-full border px-1.5 py-0.5 mx-px", colorClass)}
       >
         {chunk}
       </span>

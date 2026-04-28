@@ -41,12 +41,12 @@ export function RecordingControls({
   isSaved = false,
 }: RecordingControlsProps) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
       {/* Timer */}
       {(isRecording || duration > 0) && (
         <div
           className={cn(
-            "flex items-center gap-1.5 font-mono text-sm px-3 py-1.5 rounded-full border",
+            "flex items-center gap-1.5 font-mono text-xs sm:text-sm px-2.5 sm:px-3 py-1 rounded-full border",
             isRecording
               ? "bg-recording/10 text-recording border-recording/30"
               : "bg-muted text-muted-foreground border-border"
@@ -84,7 +84,7 @@ export function RecordingControls({
         <Button
           onClick={onStop}
           variant="destructive"
-          className="gap-2 font-semibold"
+          className="gap-1.5 font-semibold h-8"
           disabled={isLoading}
         >
           <Square className="h-4 w-4 fill-current" />
@@ -93,7 +93,7 @@ export function RecordingControls({
       ) : (
         <Button
           onClick={onStart}
-          className="gap-2 font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+          className="gap-1.5 font-semibold h-8 bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={isLoading}
         >
           {isLoading ? (
@@ -108,14 +108,14 @@ export function RecordingControls({
       {/* Save button */}
       {hasTranscript && !isRecording && (
         <>
-          <Button onClick={onNew} variant="ghost" className="gap-1.5" disabled={isSaving || isExtracting || isLoading}>
+          <Button onClick={onNew} variant="ghost" className="gap-1.5 h-8 px-2.5" disabled={isSaving || isExtracting || isLoading}>
             <Plus className="h-4 w-4" />
             New
           </Button>
           <Button
             onClick={onSave}
             variant="outline"
-            className="gap-2"
+            className="gap-1.5 h-8 px-2.5"
             disabled={isSaving || isExtracting}
           >
             {isSaving || isExtracting ? (

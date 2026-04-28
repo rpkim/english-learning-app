@@ -39,7 +39,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       setMode(cfg.mode)
       setSupabaseUrl(cfg.supabaseUrl)
       setSupabaseAnonKey(cfg.supabaseAnonKey)
-      setWhisperModel(cfg.whisperModel ?? "tiny")
+      setWhisperModel(cfg.whisperModel === "medium" ? "small" : (cfg.whisperModel ?? "tiny"))
       setTopWordExcludes(Array.isArray(cfg.topWordExcludes) ? cfg.topWordExcludes : [])
       setExcludeInput("")
     }
@@ -181,7 +181,6 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
               <SelectItem value="tiny">Whisper Tiny (faster)</SelectItem>
               <SelectItem value="base">Whisper Base (more accurate)</SelectItem>
               <SelectItem value="small">Whisper Small (higher quality, slower)</SelectItem>
-              <SelectItem value="medium">Whisper Medium (best quality, much slower)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-muted-foreground">

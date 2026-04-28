@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { AudioInputSource, useTranscription } from "@/hooks/use-transcription"
 import { TranscriptPanel } from "@/components/transcript-panel"
 import { RecordingControls } from "@/components/recording-controls"
@@ -50,6 +50,7 @@ import {
   Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { getStorageConfig, saveStorageConfig, StorageConfig } from "@/lib/storage-config"
 import {
   localGetConversations,
@@ -93,6 +94,15 @@ export function EnglishLearningApp() {
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
   const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
   const [recentTranslation, setRecentTranslation] = useState<{ source: string; korean: string } | null>(null)
+  const [isLiveTranslating, setIsLiveTranslating] = useState(false)
+  const lastLiveTranslatedRef = useRef("")
+  const liveTranslateCooldownUntilRef = useRef(0)
+  const lastLiveTranslateAttemptRef = useRef(0)
+  const liveRateLimitNotifiedRef = useRef(false)
+  const [diarizedItems, setDiarizedItems] = useState<Array<{ text: string; speaker: "A" | "B" }>>([])
+  const [isDiarizing, setIsDiarizing] = useState(false)
+  const [speakerAssignmentsByConversation, setSpeakerAssignmentsByConversation] = useState<Record<string, Record<string, "A" | "B">>>({})
+  const [speakerLabelsByConversation, setSpeakerLabelsByConversation] = useState<Record<string, { A: string; B: string }>>({})
 
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
@@ -117,13 +127,13 @@ export function EnglishLearningApp() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [manualLayout, setManualLayout] = useState<"auto" | "leftFocus" | "rightFocus">("auto")
+  const [leftPanelWidthPct, setLeftPanelWidthPct] = useState(58)
   const [isDesktop, setIsDesktop] = useState(false)
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
 
   // Transcription hook
-  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, recordedAudioBlob, isRefining, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
+  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, utterances, recordedAudioBlob, isRefining, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
       whisperModel: storageConfig.whisperModel,
@@ -191,6 +201,16 @@ export function EnglishLearningApp() {
     setConversationGroups(localGetConversationGroups())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageConfig.mode])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const rawAssignments = window.localStorage.getItem("speaker_assignments_by_conversation")
+      const rawLabels = window.localStorage.getItem("speaker_labels_by_conversation")
+      if (rawAssignments) setSpeakerAssignmentsByConversation(JSON.parse(rawAssignments))
+      if (rawLabels) setSpeakerLabelsByConversation(JSON.parse(rawLabels))
+    } catch {}
+  }, [])
 
   async function fetchConversations() {
     if (isLocal) {
@@ -470,6 +490,10 @@ export function EnglishLearningApp() {
   const handleTranslateRecent = useCallback(async () => {
     const input = `${transcript} ${interimTranscript}`.trim()
     if (!input) return
+    if (Date.now() < liveTranslateCooldownUntilRef.current) {
+      toast.info("번역 요청이 잠시 제한되어 있어 잠깐 후 다시 시도해 주세요.")
+      return
+    }
     setIsTranslatingRecent(true)
     try {
       const res = await fetch("/api/translate-recent", {
@@ -479,6 +503,9 @@ export function EnglishLearningApp() {
       })
       if (!res.ok) throw new Error("Failed to translate recent lines")
       const data = await res.json()
+      if (data?.fallback === true && data?.reason_code === "GEMINI_RATE_LIMITED") {
+        liveTranslateCooldownUntilRef.current = Date.now() + 60_000
+      }
       setRecentTranslation({
         source: typeof data?.source === "string" ? data.source : "",
         korean: typeof data?.korean_translation === "string" ? data.korean_translation : "",
@@ -490,6 +517,78 @@ export function EnglishLearningApp() {
       setIsTranslatingRecent(false)
     }
   }, [transcript, interimTranscript])
+
+  useEffect(() => {
+    if (!isRecording) return
+    if (Date.now() < liveTranslateCooldownUntilRef.current) return
+    const combined = `${transcript} ${interimTranscript}`.trim()
+    if (!combined) return
+    const tail = extractRecentTail(combined, 3)
+    if (!tail || tail.length < 24) return
+    if (tail === lastLiveTranslatedRef.current) return
+    if (Date.now() - lastLiveTranslateAttemptRef.current < 8000) return
+
+    const timer = setTimeout(async () => {
+      setIsLiveTranslating(true)
+      lastLiveTranslateAttemptRef.current = Date.now()
+      try {
+        const res = await fetch("/api/translate-recent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: tail }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (data?.fallback === true && data?.reason_code === "GEMINI_RATE_LIMITED") {
+          liveTranslateCooldownUntilRef.current = Date.now() + 60_000
+          if (!liveRateLimitNotifiedRef.current) {
+            toast.info("번역 요청이 많아 1분간 라이브 번역을 잠시 쉬어요.")
+            liveRateLimitNotifiedRef.current = true
+          }
+          return
+        }
+        if (data?.fallback !== true) {
+          liveRateLimitNotifiedRef.current = false
+        }
+        const korean = typeof data?.korean_translation === "string" ? data.korean_translation : ""
+        if (!korean) return
+        lastLiveTranslatedRef.current = tail
+        setRecentTranslation({
+          source: typeof data?.source === "string" && data.source ? data.source : tail,
+          korean,
+        })
+      } catch {
+        // Keep live translation best-effort.
+      } finally {
+        setIsLiveTranslating(false)
+      }
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [isRecording, transcript, interimTranscript])
+
+  const handleAutoDiarize = useCallback(async () => {
+    const input = transcript.trim()
+    if (!input) return
+    setIsDiarizing(true)
+    try {
+      const res = await fetch("/api/diarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: input }),
+      })
+      if (!res.ok) throw new Error("Failed to diarize transcript")
+      const data = await res.json()
+      const items = Array.isArray(data?.items) ? data.items : []
+      setDiarizedItems(items)
+      toast.success(items.length > 0 ? "Speaker labels updated" : "No diarization result")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsDiarizing(false)
+    }
+  }, [transcript])
 
   const handleRefineTranscript = useCallback(async () => {
     try {
@@ -518,6 +617,32 @@ export function EnglishLearningApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setTranscript, isLocal])
+
+  const activeSpeakerKey = selectedConversationId ?? currentConversationId ?? "__unsaved__"
+  const activeSpeakerAssignments = speakerAssignmentsByConversation[activeSpeakerKey] ?? {}
+  const activeSpeakerLabels = speakerLabelsByConversation[activeSpeakerKey] ?? { A: "Speaker A", B: "Speaker B" }
+
+  const handleSpeakerAssignmentsChange = useCallback((map: Record<string, "A" | "B">) => {
+    if (!activeSpeakerKey || activeSpeakerKey === "__unsaved__") return
+    setSpeakerAssignmentsByConversation((prev) => {
+      const next = { ...prev, [activeSpeakerKey]: map }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("speaker_assignments_by_conversation", JSON.stringify(next))
+      }
+      return next
+    })
+  }, [activeSpeakerKey])
+
+  const handleSpeakerLabelsChange = useCallback((labels: { A: string; B: string }) => {
+    if (!activeSpeakerKey || activeSpeakerKey === "__unsaved__") return
+    setSpeakerLabelsByConversation((prev) => {
+      const next = { ...prev, [activeSpeakerKey]: labels }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("speaker_labels_by_conversation", JSON.stringify(next))
+      }
+      return next
+    })
+  }, [activeSpeakerKey])
 
   const handleRenameConversation = useCallback(async (conv: Conversation, nextTitle: string) => {
     const title = nextTitle.trim()
@@ -976,7 +1101,7 @@ export function EnglishLearningApp() {
       setDesktopViewMode("compact")
       setRightCollapsed(true)
       setLeftCollapsed(false)
-      setManualLayout("leftFocus")
+      setLeftPanelWidthPct(68)
       if (typeof window !== "undefined") {
         await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("compact")
       }
@@ -984,30 +1109,13 @@ export function EnglishLearningApp() {
       setDesktopViewMode("full")
       setRightCollapsed(false)
       setLeftCollapsed(false)
-      setManualLayout("auto")
+      setLeftPanelWidthPct(58)
       if (typeof window !== "undefined") {
         await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("full")
       }
     }
     await start(source)
   }, [start, startViewMode])
-
-  const effectiveLayout = useMemo<"leftFocus" | "rightFocus">(() => {
-    if (manualLayout !== "auto") return manualLayout
-    if (isRecording) return "leftFocus"
-    return "rightFocus"
-  }, [manualLayout, isRecording])
-
-  const leftPanelClass = rightCollapsed
-    ? "flex-1"
-    : effectiveLayout === "leftFocus"
-      ? "basis-[68%]"
-      : "basis-[42%]"
-  const rightPanelClass = leftCollapsed
-    ? "flex-1"
-    : effectiveLayout === "leftFocus"
-      ? "basis-[32%]"
-      : "basis-[58%]"
 
   const collapseLeftPanel = useCallback(() => {
     setLeftCollapsed(true)
@@ -1026,6 +1134,7 @@ export function EnglishLearningApp() {
   const expandRightPanel = useCallback(() => {
     setRightCollapsed(false)
   }, [])
+
 
   useEffect(() => {
     if (leftCollapsed && rightCollapsed) {
@@ -1071,11 +1180,11 @@ export function EnglishLearningApp() {
     if (next === "compact") {
       setRightCollapsed(true)
       setLeftCollapsed(false)
-      setManualLayout("leftFocus")
+      setLeftPanelWidthPct(68)
     } else {
       setRightCollapsed(false)
       setLeftCollapsed(false)
-      setManualLayout("auto")
+      setLeftPanelWidthPct(58)
     }
   }, [desktopViewMode])
 
@@ -1201,12 +1310,19 @@ export function EnglishLearningApp() {
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: Transcription */}
-        {!leftCollapsed && (
-        <div className={cn("flex flex-col min-w-0 border-r border-border p-4 gap-3 transition-all", leftPanelClass)}>
+        {!leftCollapsed && !rightCollapsed && (
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel
+              defaultSize={leftPanelWidthPct}
+              minSize={25}
+              maxSize={75}
+              onResize={(size) => setLeftPanelWidthPct(size)}
+              className="min-w-0"
+            >
+              <div className="flex h-full flex-col min-w-0 border-r border-border p-4 gap-3">
           {/* Controls */}
-          <div className="flex items-center justify-between flex-wrap gap-2 shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 py-1">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 py-1">
+            <div className="flex flex-wrap items-center gap-2">
               <RecordingControls
                 isRecording={isRecording}
                 isLoading={status === "loading_model" && !isRecording}
@@ -1240,7 +1356,7 @@ export function EnglishLearningApp() {
               </Button>
             </div>
             {!isRecording && transcript && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -1279,13 +1395,23 @@ export function EnglishLearningApp() {
                     </Button>
                   </>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleAutoDiarize()}
+                  disabled={isDiarizing}
+                >
+                  {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
+                  {isDiarizing ? "Labeling..." : "Auto label speakers"}
+                </Button>
               </div>
             )}
             {transcript && (
               <Button
                 size="sm"
                 variant="secondary"
-                className="h-7 gap-1.5 text-xs"
+                className="h-7 gap-1.5 text-xs w-fit"
                 onClick={handleTranslateRecent}
                 disabled={isTranslatingRecent}
               >
@@ -1314,7 +1440,323 @@ export function EnglishLearningApp() {
           {/* Transcript */}
           {recentTranslation?.korean && (
             <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">Recent</p>
+              <p className="text-[11px] text-muted-foreground mb-1">
+                {isRecording ? (isLiveTranslating ? "Live translating..." : "Live") : "Recent"}
+              </p>
+              <p className="text-xs text-foreground mb-1">{recentTranslation.source}</p>
+              <p className="text-sm font-medium text-primary">{recentTranslation.korean}</p>
+            </div>
+          )}
+          <TranscriptPanel
+            transcript={transcript}
+            interimTranscript={interimTranscript}
+            isRecording={isRecording}
+            isEditing={isEditingTranscript && !isRecording}
+            vocabulary={vocabulary}
+            onTranscriptChange={setTranscript}
+            onTextSelect={handleTextSelect}
+          />
+          {isRecording && (
+            <p className="text-[11px] text-muted-foreground font-mono">
+              dbg frames:{debugInfo.framesCaptured} chunks:{debugInfo.chunksSent} level:{debugInfo.audioLevel.toFixed(4)} worker:{debugInfo.workerState}
+              {debugInfo.lastWorkerError ? ` err:${debugInfo.lastWorkerError}` : ""}
+            </p>
+          )}
+
+          {/* Manual add form (shown when text selected) */}
+          {showManualAdd && (
+            <div className="shrink-0">
+              <ManualAddForm
+                initialWord={manualWord}
+                onAdd={handleManualAdd}
+                onTranslateSelected={handleTranslateSelectedText}
+                translatedSelectedText={translatedSelectedText}
+                isTranslatingSelected={isTranslatingSelectedText}
+                onCancel={() => { setShowManualAdd(false); setManualWord(""); setTranslatedSelectedText(null) }}
+                isSubmitting={isSubmittingManual}
+              />
+            </div>
+          )}
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle className="bg-border/80 hover:bg-primary/40 data-dragging:bg-primary/50" />
+            <ResizablePanel defaultSize={100 - leftPanelWidthPct} minSize={25} maxSize={75} className="min-w-0">
+              <div className="flex h-full flex-col border-l border-border min-w-0">
+                <Tabs defaultValue="vocabulary" className="flex flex-col flex-1 min-h-0">
+                  <div className="border-b border-border px-4 pt-2 shrink-0">
+                    <div className="mb-2 flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={collapseRightPanel}
+                        title="Collapse right panel"
+                      >
+                        <PanelRightClose className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <TabsList className="w-full">
+                      <TabsTrigger value="vocabulary" className="flex-1 gap-1.5 text-xs">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        Vocabulary
+                        {scopedVocabulary.length > 0 && (
+                          <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
+                            {scopedVocabulary.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="history" className="flex-1 gap-1.5 text-xs">
+                        <History className="h-3.5 w-3.5" />
+                        Workspace
+                        {conversations.length > 0 && (
+                          <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
+                            {conversations.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                  <TabsContent value="vocabulary" className="flex-1 flex flex-col min-h-0 m-0 p-0">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {selectedConversationId
+                            ? "This session"
+                            : selectedGroupId === "__ungrouped__"
+                              ? "Unclassified"
+                              : selectedGroupId
+                              ? "This workspace"
+                              : "All items"}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <Button variant={vocabView === "items" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabView("items")}>Items</Button>
+                          <Button variant={vocabView === "frequency" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabView("frequency")}>Top words</Button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button variant={vocabFilter === "all" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("all")}>All {scopedVocabulary.length}</Button>
+                          <Button variant={vocabFilter === "word" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("word")}>Words {wordCount}</Button>
+                          <Button variant={vocabFilter === "idiom" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("idiom")}>Idioms {idiomCount}</Button>
+                          <Button variant={vocabFilter === "slang" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("slang")}>Slang {slangCount}</Button>
+                        </div>
+                        {selectedConversationId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 text-xs px-1.5 text-muted-foreground"
+                            onClick={() => {
+                              setSelectedConversationId(null)
+                              fetchVocabulary()
+                            }}
+                          >
+                            Show all
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleExportCsv} title="Export vocabulary as CSV"><FileDown className="h-3.5 w-3.5" />CSV</Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => void handleExportPdf()} disabled={isExportingPdf} title="Export vocabulary as PDF">
+                          {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}PDF
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => { setShowManualAdd(true); setManualWord("") }}><Plus className="h-3.5 w-3.5" />Add</Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => void handleTranslateScoped()} disabled={isBatchTranslating} title="Translate all in current scope">
+                          {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <ScrollArea className="flex-1">
+                      <div className="p-2 flex flex-col gap-1">
+                        {isLoadingVocab ? (
+                          <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                        ) : vocabView === "items" && filteredVocabulary.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                            <BookOpen className="h-8 w-8 opacity-30" />
+                            <p className="text-xs text-center text-balance leading-relaxed">No items in this filter yet.</p>
+                          </div>
+                        ) : vocabView === "items" ? (
+                          <>
+                            {filteredVocabulary.map((item) => (
+                              <VocabularyCard key={item.id} item={item} onDelete={handleDelete} onToggleMastered={handleToggleMastered} onTranslate={handleTranslate} isTranslating={translatingId === item.id} />
+                            ))}
+                            {masteredCount > 0 && <p className="text-center text-xs text-muted-foreground py-2">{masteredCount} of {scopedVocabulary.length} mastered</p>}
+                          </>
+                        ) : frequentWords.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                            <BookOpen className="h-8 w-8 opacity-30" />
+                            <p className="text-xs text-center text-balance leading-relaxed">No frequent words in this scope yet.</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {frequentWords.map((item) => (
+                              <div key={item.word} className="flex items-center justify-between rounded-md border border-border px-2 py-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-medium truncate">{item.word}</span>
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">{item.count}</Badge>
+                                </div>
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => void handleAddFrequentWord(item.word)}>+ Add</Button>
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => handleExcludeTopWord(item.word)} title="Exclude from top words globally">
+                                  <EyeOff className="h-3 w-3 mr-1" />
+                                  Exclude
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                  <TabsContent value="history" className="flex-1 min-h-0 m-0 p-0">
+                    <div className="h-full p-3">
+                      <ConversationHistory
+                        conversations={conversations}
+                        groups={conversationGroups}
+                        selectedGroupId={selectedGroupId}
+                        selectedId={selectedConversationId}
+                        onSelect={handleSelectConversation}
+                        onRename={handleRenameConversation}
+                        onDelete={handleDeleteConversation}
+                        onCreateGroup={handleCreateGroup}
+                        onRenameGroup={handleRenameGroup}
+                        onDeleteGroup={handleDeleteGroup}
+                        onArchiveGroup={handleArchiveGroup}
+                        onRestoreGroup={handleRestoreGroup}
+                        onSelectGroup={handleSelectGroup}
+                        onMoveConversationToGroup={handleMoveConversationToGroup}
+                        workspaceStats={workspaceStats}
+                      />
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
+
+        {/* Left panel (single mode) */}
+        {!leftCollapsed && rightCollapsed && (
+        <div className="flex flex-col min-w-0 border-r border-border p-4 gap-3 flex-1">
+          {/* Controls */}
+          <div className="flex flex-col gap-2 shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 py-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <RecordingControls
+                isRecording={isRecording}
+                isLoading={status === "loading_model" && !isRecording}
+                isSaving={isSaving}
+                isExtracting={isExtracting}
+                duration={duration}
+                audioSource={audioSource}
+                onStart={() => setShowStartSourceDialog(true)}
+                onStop={stop}
+                onSave={handleSave}
+                onNew={() => {
+                  reset()
+                  setCurrentConversationId(null)
+                  setSelectedConversationId(null)
+                  setIsEditingTranscript(false)
+                  setShowManualAdd(false)
+                  setManualWord("")
+                  setIsCurrentTranscriptSaved(false)
+                }}
+                hasTranscript={transcript.length > 20}
+                isSaved={isCurrentTranscriptSaved}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={collapseLeftPanel}
+                title="Collapse transcription panel"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </div>
+            {!isRecording && transcript && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleToggleEditTranscript()}
+                >
+                  {isEditingTranscript ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                  {isEditingTranscript ? "Done" : "Edit"}
+                </Button>
+                {!isEditingTranscript && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MousePointerClick className="h-3 w-3" />
+                    Select text to save a word
+                  </p>
+                )}
+                {recordedAudioBlob && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={() => void handleRefineTranscript()}
+                      disabled={isRefining}
+                    >
+                      {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+                      {isRefining ? "Refining..." : "Re-transcribe (HQ)"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={downloadRecording}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Audio
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleAutoDiarize()}
+                  disabled={isDiarizing}
+                >
+                  {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
+                  {isDiarizing ? "Labeling..." : "Auto label speakers"}
+                </Button>
+              </div>
+            )}
+            {transcript && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 gap-1.5 text-xs w-fit"
+                onClick={handleTranslateRecent}
+                disabled={isTranslatingRecent}
+              >
+                {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                가장 최근 2-3문장 번역
+              </Button>
+            )}
+          </div>
+
+          {/* Model loading progress */}
+          {status === "loading_model" && loadingFile && (
+            <div className="shrink-0 bg-muted rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                <span className="truncate">{loadingFile}</span>
+                <span>{loadingProgress}%</span>
+              </div>
+              <div className="w-full bg-border rounded-full h-1">
+                <div
+                  className="bg-primary h-1 rounded-full transition-all duration-300"
+                  style={{ width: `${loadingProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Transcript */}
+          {recentTranslation?.korean && (
+            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground mb-1">
+                {isRecording ? (isLiveTranslating ? "Live translating..." : "Live") : "Recent"}
+              </p>
               <p className="text-xs text-foreground mb-1">{recentTranslation.source}</p>
               <p className="text-sm font-medium text-primary">{recentTranslation.korean}</p>
             </div>
@@ -1365,36 +1807,12 @@ export function EnglishLearningApp() {
           </div>
         )}
 
-        {/* Right panel: Vocabulary + History */}
-        {!rightCollapsed && (
-        <div className={cn("flex flex-col border-l border-border min-w-0 transition-all", rightPanelClass)}>
+        {/* Right panel (single mode): Vocabulary + History */}
+        {!rightCollapsed && leftCollapsed && (
+        <div className="flex flex-col border-l border-border min-w-0 flex-1">
           <Tabs defaultValue="vocabulary" className="flex flex-col flex-1 min-h-0">
             <div className="border-b border-border px-4 pt-2 shrink-0">
               <div className="mb-2 flex items-center justify-end gap-1">
-                <Button
-                  variant={manualLayout === "leftFocus" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => setManualLayout("leftFocus")}
-                >
-                  Left focus
-                </Button>
-                <Button
-                  variant={manualLayout === "rightFocus" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => setManualLayout("rightFocus")}
-                >
-                  Right focus
-                </Button>
-                <Button
-                  variant={manualLayout === "auto" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => setManualLayout("auto")}
-                >
-                  Auto
-                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1743,4 +2161,12 @@ export function EnglishLearningApp() {
 function normalizeVocabType(type: VocabularyItem["type"]): VocabularyItem["type"] {
   if (type === "word" || type === "idiom" || type === "slang") return type
   return "idiom"
+}
+
+function extractRecentTail(text: string, sentenceCount: number) {
+  const normalized = text.replace(/\s+/g, " ").trim()
+  if (!normalized) return ""
+  const sentences = normalized.split(/(?<=[.!?])\s+/).filter(Boolean)
+  if (sentences.length === 0) return normalized
+  return sentences.slice(-sentenceCount).join(" ").trim()
 }

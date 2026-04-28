@@ -19,6 +19,13 @@ export interface TranscriptionDebugInfo {
   lastWorkerError: string | null
 }
 
+export interface TranscriptionUtterance {
+  id: string
+  text: string
+  source: "whisper" | "webspeech"
+  ts: number
+}
+
 function isElectronDesktop() {
   if (typeof window === "undefined") return false
   const maybeDesktop = (window as Window & { desktop?: { isElectron?: boolean } }).desktop
@@ -57,8 +64,21 @@ interface UseTranscriptionOptions {
 }
 
 const TARGET_SAMPLE_RATE = 16000
-const MAX_BACKLOG_SECONDS = 12
-const MAX_BACKLOG_SAMPLES = TARGET_SAMPLE_RATE * MAX_BACKLOG_SECONDS
+
+function getMaxBacklogSamples(model: "tiny" | "base" | "small" | "medium") {
+  const secondsByModel: Record<"tiny" | "base" | "small" | "medium", number> = {
+    tiny: 12,
+    base: 10,
+    small: 8,
+    medium: 6,
+  }
+  return TARGET_SAMPLE_RATE * secondsByModel[model]
+}
+
+function isOrtRunFailure(message: string | null | undefined) {
+  const msg = String(message ?? "").toLowerCase()
+  return msg.includes("ortrun") || msg.includes("error code = 6") || msg.includes("onnxruntime")
+}
 
 function hasWebSpeechSupport() {
   if (typeof window === "undefined") return false
@@ -88,6 +108,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     workerState: "idle",
     lastWorkerError: null,
   })
+  const [utterances, setUtterances] = useState<TranscriptionUtterance[]>([])
   const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null)
   const [isRefining, setIsRefining] = useState(false)
 
@@ -112,6 +133,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
   const workerReadyRef = useRef(false)
   const workerBusyRef = useRef(false)
   const workerReadyWaitersRef = useRef<Array<() => void>>([])
+  const lastRecoveryNoticeAtRef = useRef(0)
   const transcribeRequestRef = useRef<{
     resolve: (text: string) => void
     reject: (message: string) => void
@@ -157,6 +179,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           }
           const clean = text.trim()
           if (clean && clean !== "[BLANK_AUDIO]") {
+            setUtterances((prev) => [...prev, { id: crypto.randomUUID(), text: clean, source: "whisper", ts: Date.now() }])
             setTranscript((prev) => appendNonDuplicateTranscript(prev, clean))
             setInterimTranscript("")
             onTranscriptRef.current?.(clean)
@@ -166,6 +189,27 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           if (transcribeRequestRef.current) {
             transcribeRequestRef.current.reject(message ?? "Unknown worker error")
             transcribeRequestRef.current = null
+          }
+          const isOrtFailure = isOrtRunFailure(message)
+          if (isOrtFailure && workerRef.current) {
+            const now = Date.now()
+            const shouldNotify = now - lastRecoveryNoticeAtRef.current > 10_000
+            if (whisperModelRef.current !== "tiny") {
+              whisperModelRef.current = "tiny"
+              workerReadyRef.current = false
+              setDebugInfo((prev) => ({
+                ...prev,
+                workerState: "loading",
+                lastWorkerError: message ?? "Whisper runtime error",
+              }))
+              setStatus("loading_model")
+              workerRef.current.postMessage({ type: "load", model: "tiny" })
+              if (shouldNotify) {
+                lastRecoveryNoticeAtRef.current = now
+                onErrorRef.current?.("Whisper runtime limit reached. Automatically switching to Tiny model for stability.")
+              }
+              return
+            }
           }
           setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: message ?? "Unknown worker error" }))
           onErrorRef.current?.(message)
@@ -234,6 +278,10 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
         const res = e.results[i]
         if (res.isFinal) {
           const text = res[0].transcript
+          const clean = text.trim()
+          if (clean) {
+            setUtterances((prev) => [...prev, { id: crypto.randomUUID(), text: clean, source: "webspeech", ts: Date.now() }])
+          }
           setTranscript((prev) => prev + (prev ? " " : "") + text.trim())
           setInterimTranscript("")
           onTranscriptRef.current?.(text.trim())
@@ -259,15 +307,16 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     if (!workerReadyRef.current) return
     // If worker is still processing previous chunk, keep buffering but trim backlog.
     if (workerBusyRef.current) {
+      const maxBacklogSamples = getMaxBacklogSamples(whisperModelRef.current)
       const totalLength = audioBufferRef.current.reduce((sum, buf) => sum + buf.length, 0)
-      if (totalLength > MAX_BACKLOG_SAMPLES) {
+      if (totalLength > maxBacklogSamples) {
         const all = new Float32Array(totalLength)
         let o = 0
         for (const b of audioBufferRef.current) {
           all.set(b, o)
           o += b.length
         }
-        const trimmed = all.slice(all.length - MAX_BACKLOG_SAMPLES)
+        const trimmed = all.slice(all.length - maxBacklogSamples)
         audioBufferRef.current = [trimmed]
       }
       return
@@ -288,9 +337,10 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
         ? combined
         : downsampleTo16kHz(combined, inputRate)
 
+    const maxBacklogSamples = getMaxBacklogSamples(whisperModelRef.current)
     const limitedAudio =
-      preparedAudio.length > MAX_BACKLOG_SAMPLES
-        ? preparedAudio.slice(preparedAudio.length - MAX_BACKLOG_SAMPLES)
+      preparedAudio.length > maxBacklogSamples
+        ? preparedAudio.slice(preparedAudio.length - maxBacklogSamples)
         : preparedAudio
 
     workerBusyRef.current = true
@@ -324,6 +374,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
       setRecordedAudioBlob(null)
       isRecordingRef.current = true
       setAudioSource(source)
+      setUtterances([])
       setDuration(0)
       startedAtRef.current = Date.now()
       timerRef.current = setInterval(() => {
@@ -553,6 +604,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     setTranscript("")
     setInterimTranscript("")
     setDuration(0)
+    setUtterances([])
     setRecordedAudioBlob(null)
     recordedChunksRef.current = []
   }, [])
@@ -652,6 +704,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     duration,
     audioSource,
     debugInfo,
+    utterances,
     recordedAudioBlob,
     isRefining,
     start,
