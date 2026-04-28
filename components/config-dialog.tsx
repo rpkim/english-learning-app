@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getStorageConfig, saveStorageConfig, StorageConfig, StorageMode, WhisperModel } from "@/lib/storage-config"
+import { getStorageConfig, saveStorageConfig, StorageConfig, StorageMode, TranslationProvider, WhisperModel } from "@/lib/storage-config"
 import { Database, HardDrive, CheckCircle2, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -29,6 +29,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const [supabaseUrl, setSupabaseUrl] = useState("")
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("")
   const [whisperModel, setWhisperModel] = useState<WhisperModel>("tiny")
+  const [translationProvider, setTranslationProvider] = useState<TranslationProvider>("gemini")
   const [topWordExcludes, setTopWordExcludes] = useState<string[]>([])
   const [excludeInput, setExcludeInput] = useState("")
 
@@ -40,6 +41,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       setSupabaseUrl(cfg.supabaseUrl)
       setSupabaseAnonKey(cfg.supabaseAnonKey)
       setWhisperModel(cfg.whisperModel === "medium" ? "small" : (cfg.whisperModel ?? "tiny"))
+      setTranslationProvider(cfg.translationProvider ?? "gemini")
       setTopWordExcludes(Array.isArray(cfg.topWordExcludes) ? cfg.topWordExcludes : [])
       setExcludeInput("")
     }
@@ -50,7 +52,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const canSave = mode === "local" || (urlValid && keyValid)
 
   function handleSave() {
-    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey, whisperModel, topWordExcludes }
+    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey, whisperModel, translationProvider, topWordExcludes }
     saveStorageConfig(config)
     onSave(config)
     onOpenChange(false)
@@ -186,6 +188,19 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
           <p className="text-[11px] text-muted-foreground">
             Bigger models improve accuracy but increase latency and memory usage.
           </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Translation provider</Label>
+          <Select value={translationProvider} onValueChange={(value) => setTranslationProvider(value as TranslationProvider)}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gemini">Gemini API (better quality)</SelectItem>
+              <SelectItem value="translate_api">Translate API (lower cost)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">

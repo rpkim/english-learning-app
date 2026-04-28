@@ -76,7 +76,8 @@ self.addEventListener("message", async (event) => {
       })
       self.postMessage({ type: "result", text: result.text })
     } catch (err) {
-      self.postMessage({ type: "error", message: err.message })
+      const message = err?.message ? String(err.message) : String(err)
+      self.postMessage({ type: "error", message })
     }
     return
   }

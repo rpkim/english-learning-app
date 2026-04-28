@@ -8,18 +8,46 @@ function extractRecentSentences(text: string, maxSentences = 3) {
   return parts.slice(-maxSentences).join(" ").trim()
 }
 
+async function translateWithPublicApi(text: string) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=${encodeURIComponent(text)}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Translate API failed with status ${res.status}`)
+  const data = await res.json()
+  const translated = Array.isArray(data?.[0])
+    ? data[0].map((row: unknown) => (Array.isArray(row) ? String(row[0] ?? "") : "")).join("")
+    : ""
+  return translated.trim()
+}
+
 export async function POST(request: Request) {
   try {
     let transcript = ""
+    let provider: "gemini" | "translate_api" = "gemini"
     try {
       const body = await request.json()
       transcript = typeof body?.transcript === "string" ? body.transcript : ""
+      provider = body?.provider === "translate_api" ? "translate_api" : "gemini"
     } catch {
       transcript = ""
     }
     const source = extractRecentSentences(transcript)
     if (!source) {
       return NextResponse.json({ source: "", korean_translation: "" })
+    }
+
+    if (provider === "translate_api") {
+      try {
+        const korean = await translateWithPublicApi(source)
+        return NextResponse.json({ source, korean_translation: korean })
+      } catch (apiError) {
+        return NextResponse.json({
+          source,
+          korean_translation: "Translate API를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+          fallback: true,
+          reason_code: "TRANSLATE_API_FAILED",
+          reason_message: apiError instanceof Error ? apiError.message : "Translate API request failed.",
+        })
+      }
     }
 
     const apiKey = process.env.GEMINI_API_KEY

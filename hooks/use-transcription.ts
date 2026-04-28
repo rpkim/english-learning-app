@@ -80,6 +80,10 @@ function isOrtRunFailure(message: string | null | undefined) {
   return msg.includes("ortrun") || msg.includes("error code = 6") || msg.includes("onnxruntime")
 }
 
+function isInvalidSessionIdError(message: string | null | undefined) {
+  return String(message ?? "").toLowerCase().includes("invalid session id")
+}
+
 function hasWebSpeechSupport() {
   if (typeof window === "undefined") return false
   const win = window as AnyWindow
@@ -370,6 +374,10 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
       }
 
       streamRef.current = stream
+      // Ensure a fresh pipeline when restarting recording.
+      audioBufferRef.current = []
+      workerBusyRef.current = false
+      transcribeRequestRef.current = null
       recordedChunksRef.current = []
       setRecordedAudioBlob(null)
       isRecordingRef.current = true
@@ -572,6 +580,9 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     if (timerRef.current) clearInterval(timerRef.current)
     if (chunkIntervalRef.current) clearInterval(chunkIntervalRef.current)
     if (noAudioWarnTimeoutRef.current) clearTimeout(noAudioWarnTimeoutRef.current)
+    timerRef.current = null
+    chunkIntervalRef.current = null
+    noAudioWarnTimeoutRef.current = null
 
     // Stop stream
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -593,6 +604,10 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     recognitionRef.current?.stop()
     recognitionRef.current = null
 
+    // Clear leftover buffers and pending worker state before next start.
+    audioBufferRef.current = []
+    workerBusyRef.current = false
+    transcribeRequestRef.current = null
     setInterimTranscript("")
     setStatus("ready")
   }, [useWebSpeech, processAudioChunk])
@@ -634,19 +649,39 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
       const chunkSamples = TARGET_SAMPLE_RATE * 10
       const strideSamples = TARGET_SAMPLE_RATE * 9
       let nextTranscript = ""
+      const runSegment = async (segment: Float32Array) => {
+        let lastError = "Failed to transcribe segment"
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const segmentCopy = segment.slice(0)
+            const resultPromise = new Promise<string>((resolve, reject) => {
+              transcribeRequestRef.current = { resolve, reject }
+              workerBusyRef.current = true
+              workerRef.current?.postMessage(
+                { type: "transcribe", audio: segmentCopy, samplingRate: TARGET_SAMPLE_RATE, model },
+                [segmentCopy.buffer]
+              )
+            })
+            return await resultPromise
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error)
+            if (attempt === 0 && isInvalidSessionIdError(lastError) && workerRef.current) {
+              workerReadyRef.current = false
+              workerRef.current.postMessage({ type: "load", model })
+              await waitForWorkerReady()
+              continue
+            }
+            throw new Error(lastError)
+          }
+        }
+        throw new Error(lastError)
+      }
+
       for (let start = 0; start < prepared.length; start += strideSamples) {
         const end = Math.min(prepared.length, start + chunkSamples)
         const segment = prepared.slice(start, end)
         if (segment.length < TARGET_SAMPLE_RATE) break
-        const resultPromise = new Promise<string>((resolve, reject) => {
-          transcribeRequestRef.current = { resolve, reject }
-          workerBusyRef.current = true
-          workerRef.current?.postMessage(
-            { type: "transcribe", audio: segment, samplingRate: TARGET_SAMPLE_RATE, model },
-            [segment.buffer]
-          )
-        })
-        const text = (await resultPromise).trim()
+        const text = (await runSegment(segment)).trim()
         if (text && text !== "[BLANK_AUDIO]") {
           nextTranscript = appendNonDuplicateTranscript(nextTranscript, text)
         }
