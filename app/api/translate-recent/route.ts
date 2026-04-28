@@ -23,14 +23,16 @@ export async function POST(request: Request) {
   try {
     let transcript = ""
     let provider: "gemini" | "translate_api" = "gemini"
+    let scope: "recent" | "all" = "recent"
     try {
       const body = await request.json()
       transcript = typeof body?.transcript === "string" ? body.transcript : ""
       provider = body?.provider === "translate_api" ? "translate_api" : "gemini"
+      scope = body?.scope === "all" ? "all" : "recent"
     } catch {
       transcript = ""
     }
-    const source = extractRecentSentences(transcript)
+    const source = scope === "all" ? transcript.trim() : extractRecentSentences(transcript)
     if (!source) {
       return NextResponse.json({ source: "", korean_translation: "" })
     }

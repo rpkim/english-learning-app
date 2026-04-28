@@ -93,8 +93,12 @@ export function EnglishLearningApp() {
   const [startViewMode, setStartViewMode] = useState<"compact" | "full">("full")
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
   const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
+  const [isTranslatingAllText, setIsTranslatingAllText] = useState(false)
   const [recentSnippet, setRecentSnippet] = useState("")
   const [recentSnippetTranslation, setRecentSnippetTranslation] = useState("")
+  const [fullTranscriptTranslation, setFullTranscriptTranslation] = useState("")
+  const [isFullTranscriptExpanded, setIsFullTranscriptExpanded] = useState(true)
+  const [speakerPreview, setSpeakerPreview] = useState("")
   const [diarizedItems, setDiarizedItems] = useState<Array<{ text: string; speaker: "A" | "B" }>>([])
   const [isDiarizing, setIsDiarizing] = useState(false)
   const [speakerAssignmentsByConversation, setSpeakerAssignmentsByConversation] = useState<Record<string, Record<string, "A" | "B">>>({})
@@ -257,7 +261,7 @@ export function EnglishLearningApp() {
       const res = await fetch("/api/translate-recent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProvider }),
+        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProviderRecent }),
       })
       if (!res.ok) throw new Error("Failed to translate selected text")
       const data = await res.json()
@@ -268,7 +272,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsTranslatingSelectedText(false)
     }
-  }, [storageConfig.translationProvider])
+  }, [storageConfig.translationProviderRecent])
 
   // Save session + auto-extract vocabulary
   const handleSave = useCallback(async () => {
@@ -446,7 +450,7 @@ export function EnglishLearningApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: storageConfig.translationProvider,
+          provider: storageConfig.translationProviderAll,
           word: item.word,
           type: item.type,
           definition: item.definition,
@@ -482,7 +486,7 @@ export function EnglishLearningApp() {
     } finally {
       setTranslatingId(null)
     }
-  }, [isLocal, storageConfig.translationProvider])
+  }, [isLocal, storageConfig.translationProviderAll])
 
   const handleTranslateRecent = useCallback(async () => {
     const input = recentSnippet || extractRecentTail(`${transcript} ${interimTranscript}`.trim(), 1)
@@ -492,7 +496,7 @@ export function EnglishLearningApp() {
       const res = await fetch("/api/translate-recent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProvider }),
+        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProviderRecent, scope: "recent" }),
       })
       if (!res.ok) throw new Error("Failed to translate recent lines")
       const data = await res.json()
@@ -504,13 +508,37 @@ export function EnglishLearningApp() {
     } finally {
       setIsTranslatingRecent(false)
     }
-  }, [recentSnippet, transcript, interimTranscript, storageConfig.translationProvider])
+  }, [recentSnippet, transcript, interimTranscript, storageConfig.translationProviderRecent])
+
+  const handleTranslateAllTranscript = useCallback(async () => {
+    const input = `${transcript} ${interimTranscript}`.trim()
+    if (!input) return
+    setIsTranslatingAllText(true)
+    try {
+      const res = await fetch("/api/translate-recent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProviderAll, scope: "all" }),
+      })
+      if (!res.ok) throw new Error("Failed to translate transcript")
+      const data = await res.json()
+      const korean = typeof data?.korean_translation === "string" ? data.korean_translation : ""
+      setFullTranscriptTranslation(korean)
+      toast.success("Translated full transcript")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsTranslatingAllText(false)
+    }
+  }, [transcript, interimTranscript, storageConfig.translationProviderAll])
 
   useEffect(() => {
     const combined = `${transcript} ${interimTranscript}`.trim()
     if (!combined) {
       setRecentSnippet("")
       setRecentSnippetTranslation("")
+      setFullTranscriptTranslation("")
       return
     }
     const nextSnippet = extractRecentTail(combined, 1)
@@ -523,8 +551,11 @@ export function EnglishLearningApp() {
   }, [isRecording, transcript, interimTranscript])
 
   const handleAutoDiarize = useCallback(async () => {
-    const input = transcript.trim()
-    if (!input) return
+    const input = `${transcript} ${interimTranscript}`.trim()
+    if (!input) {
+      toast.info("No transcript text to label yet")
+      return
+    }
     setIsDiarizing(true)
     try {
       const res = await fetch("/api/diarize", {
@@ -536,14 +567,24 @@ export function EnglishLearningApp() {
       const data = await res.json()
       const items = Array.isArray(data?.items) ? data.items : []
       setDiarizedItems(items)
-      toast.success(items.length > 0 ? "Speaker labels updated" : "No diarization result")
+      if (items.length > 0) {
+        const preview = items
+          .slice(0, 6)
+          .map((item: { text: string; speaker: "A" | "B" }) => `${item.speaker}: ${item.text}`)
+          .join("\n")
+        setSpeakerPreview(preview)
+        toast.success("Speaker labels updated")
+      } else {
+        setSpeakerPreview("")
+        toast.info("No diarization result")
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)
     } finally {
       setIsDiarizing(false)
     }
-  }, [transcript])
+  }, [transcript, interimTranscript])
 
   const handleRefineTranscript = useCallback(async () => {
     try {
@@ -797,7 +838,7 @@ export function EnglishLearningApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: storageConfig.translationProvider,
+          provider: storageConfig.translationProviderAll,
           items: targets.map((item) => ({
             id: item.id,
             word: item.word,
@@ -849,7 +890,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsBatchTranslating(false)
     }
-  }, [scopedVocabulary, isLocal, storageConfig.translationProvider])
+  }, [scopedVocabulary, isLocal, storageConfig.translationProviderAll])
 
   const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
   const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
@@ -1371,6 +1412,16 @@ export function EnglishLearningApp() {
                   {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
                   Translate recent
                 </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleTranslateAllTranscript()}
+                  disabled={isTranslatingAllText || !transcript.trim()}
+                >
+                  {isTranslatingAllText ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+                  Translate all
+                </Button>
               </div>
             )}
           </div>
@@ -1399,6 +1450,12 @@ export function EnglishLearningApp() {
               {recentSnippetTranslation && <p className="mt-1 text-sm font-medium text-primary">{recentSnippetTranslation}</p>}
             </div>
           )}
+          {speakerPreview && (
+            <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground mb-1">Speaker preview</p>
+              <pre className="text-xs whitespace-pre-wrap text-foreground">{speakerPreview}</pre>
+            </div>
+          )}
           <TranscriptPanel
             transcript={transcript}
             interimTranscript={interimTranscript}
@@ -1408,6 +1465,24 @@ export function EnglishLearningApp() {
             onTranscriptChange={setTranscript}
             onTextSelect={handleTextSelect}
           />
+          {fullTranscriptTranslation && (
+            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">Full transcript translation</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => setIsFullTranscriptExpanded((prev) => !prev)}
+                >
+                  {isFullTranscriptExpanded ? "Fold" : "Unfold"}
+                </Button>
+              </div>
+              {isFullTranscriptExpanded && (
+                <p className="text-sm font-medium text-primary whitespace-pre-wrap">{fullTranscriptTranslation}</p>
+              )}
+            </div>
+          )}
           {isRecording && (
             <p className="text-[11px] text-muted-foreground font-mono">
               dbg frames:{debugInfo.framesCaptured} chunks:{debugInfo.chunksSent} level:{debugInfo.audioLevel.toFixed(4)} worker:{debugInfo.workerState}
@@ -1682,6 +1757,16 @@ export function EnglishLearningApp() {
                   {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
                   Translate recent
                 </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleTranslateAllTranscript()}
+                  disabled={isTranslatingAllText || !transcript.trim()}
+                >
+                  {isTranslatingAllText ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+                  Translate all
+                </Button>
               </div>
             )}
           </div>
@@ -1710,6 +1795,12 @@ export function EnglishLearningApp() {
               {recentSnippetTranslation && <p className="mt-1 text-sm font-medium text-primary">{recentSnippetTranslation}</p>}
             </div>
           )}
+          {speakerPreview && (
+            <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground mb-1">Speaker preview</p>
+              <pre className="text-xs whitespace-pre-wrap text-foreground">{speakerPreview}</pre>
+            </div>
+          )}
           <TranscriptPanel
             transcript={transcript}
             interimTranscript={interimTranscript}
@@ -1719,6 +1810,24 @@ export function EnglishLearningApp() {
             onTranscriptChange={setTranscript}
             onTextSelect={handleTextSelect}
           />
+          {fullTranscriptTranslation && (
+            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">Full transcript translation</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => setIsFullTranscriptExpanded((prev) => !prev)}
+                >
+                  {isFullTranscriptExpanded ? "Fold" : "Unfold"}
+                </Button>
+              </div>
+              {isFullTranscriptExpanded && (
+                <p className="text-sm font-medium text-primary whitespace-pre-wrap">{fullTranscriptTranslation}</p>
+              )}
+            </div>
+          )}
           {isRecording && (
             <p className="text-[11px] text-muted-foreground font-mono">
               dbg frames:{debugInfo.framesCaptured} chunks:{debugInfo.chunksSent} level:{debugInfo.audioLevel.toFixed(4)} worker:{debugInfo.workerState}

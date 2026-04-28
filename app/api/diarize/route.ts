@@ -29,8 +29,10 @@ function fallbackDiarize(transcript: string): DiarizedItem[] {
 }
 
 export async function POST(request: Request) {
+  let transcript = ""
   try {
-    const { transcript } = await request.json()
+    const body = await request.json().catch(() => ({}))
+    transcript = typeof body?.transcript === "string" ? body.transcript : ""
     if (!transcript || typeof transcript !== "string") {
       return NextResponse.json({ items: [] as DiarizedItem[] })
     }
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
     const prompt = `You are a dialogue segmentation assistant.
 Given this transcript, split it into utterances and assign each utterance to speaker "A" or "B".
 Use context to keep turns coherent.
@@ -86,6 +88,10 @@ ${transcript}`
     }
     return NextResponse.json({ items })
   } catch {
-    return NextResponse.json({ items: [] as DiarizedItem[] }, { status: 200 })
+    // Never return empty on runtime errors when transcript exists.
+    return NextResponse.json({
+      items: transcript ? fallbackDiarize(transcript) : ([] as DiarizedItem[]),
+      source: "fallback_runtime_error",
+    }, { status: 200 })
   }
 }

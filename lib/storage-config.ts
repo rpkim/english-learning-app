@@ -7,7 +7,8 @@ export interface StorageConfig {
   supabaseUrl: string
   supabaseAnonKey: string
   whisperModel: WhisperModel
-  translationProvider: TranslationProvider
+  translationProviderRecent: TranslationProvider
+  translationProviderAll: TranslationProvider
   topWordExcludes: string[]
 }
 
@@ -25,7 +26,8 @@ const DEFAULT_CONFIG: StorageConfig = {
   supabaseUrl: "",
   supabaseAnonKey: "",
   whisperModel: "tiny",
-  translationProvider: "gemini",
+  translationProviderRecent: "gemini",
+  translationProviderAll: "translate_api",
   topWordExcludes: [],
 }
 
@@ -34,7 +36,14 @@ export function getStorageConfig(): StorageConfig {
   try {
     const raw = localStorage.getItem(CONFIG_KEY)
     if (!raw) return DEFAULT_CONFIG
-    const parsed = { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as StorageConfig
+    const parsedRaw = { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as StorageConfig & {
+      translationProvider?: TranslationProvider
+    }
+    const parsed: StorageConfig = {
+      ...parsedRaw,
+      translationProviderRecent: parsedRaw.translationProviderRecent ?? parsedRaw.translationProvider ?? "gemini",
+      translationProviderAll: parsedRaw.translationProviderAll ?? parsedRaw.translationProvider ?? "translate_api",
+    }
     const normalizedWhisperModel = parsed.whisperModel === "medium" ? "small" : parsed.whisperModel
 
     // If Supabase mode was saved but no built-in env exists and no custom credentials
