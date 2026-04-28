@@ -31,7 +31,6 @@ import {
   HardDrive,
   Pencil,
   Check,
-  Languages,
   Globe,
   Monitor,
   Mic,
@@ -92,13 +91,7 @@ export function EnglishLearningApp() {
   const [showStartSourceDialog, setShowStartSourceDialog] = useState(false)
   const [startViewMode, setStartViewMode] = useState<"compact" | "full">("full")
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
-  const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
-  const [recentTranslation, setRecentTranslation] = useState<{ source: string; korean: string } | null>(null)
-  const [isLiveTranslating, setIsLiveTranslating] = useState(false)
-  const lastLiveTranslatedRef = useRef("")
-  const liveTranslateCooldownUntilRef = useRef(0)
-  const lastLiveTranslateAttemptRef = useRef(0)
-  const liveRateLimitNotifiedRef = useRef(false)
+  const [recentSnippet, setRecentSnippet] = useState("")
   const [diarizedItems, setDiarizedItems] = useState<Array<{ text: string; speaker: "A" | "B" }>>([])
   const [isDiarizing, setIsDiarizing] = useState(false)
   const [speakerAssignmentsByConversation, setSpeakerAssignmentsByConversation] = useState<Record<string, Record<string, "A" | "B">>>({})
@@ -487,84 +480,13 @@ export function EnglishLearningApp() {
     }
   }, [isLocal])
 
-  const handleTranslateRecent = useCallback(async () => {
-    const input = `${transcript} ${interimTranscript}`.trim()
-    if (!input) return
-    if (Date.now() < liveTranslateCooldownUntilRef.current) {
-      toast.info("번역 요청이 잠시 제한되어 있어 잠깐 후 다시 시도해 주세요.")
+  useEffect(() => {
+    const combined = `${transcript} ${interimTranscript}`.trim()
+    if (!combined) {
+      setRecentSnippet("")
       return
     }
-    setIsTranslatingRecent(true)
-    try {
-      const res = await fetch("/api/translate-recent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: input }),
-      })
-      if (!res.ok) throw new Error("Failed to translate recent lines")
-      const data = await res.json()
-      if (data?.fallback === true && data?.reason_code === "GEMINI_RATE_LIMITED") {
-        liveTranslateCooldownUntilRef.current = Date.now() + 60_000
-      }
-      setRecentTranslation({
-        source: typeof data?.source === "string" ? data.source : "",
-        korean: typeof data?.korean_translation === "string" ? data.korean_translation : "",
-      })
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error"
-      toast.error(msg)
-    } finally {
-      setIsTranslatingRecent(false)
-    }
-  }, [transcript, interimTranscript])
-
-  useEffect(() => {
-    if (!isRecording) return
-    if (Date.now() < liveTranslateCooldownUntilRef.current) return
-    const combined = `${transcript} ${interimTranscript}`.trim()
-    if (!combined) return
-    const tail = extractRecentTail(combined, 3)
-    if (!tail || tail.length < 24) return
-    if (tail === lastLiveTranslatedRef.current) return
-    if (Date.now() - lastLiveTranslateAttemptRef.current < 8000) return
-
-    const timer = setTimeout(async () => {
-      setIsLiveTranslating(true)
-      lastLiveTranslateAttemptRef.current = Date.now()
-      try {
-        const res = await fetch("/api/translate-recent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: tail }),
-        })
-        if (!res.ok) return
-        const data = await res.json()
-        if (data?.fallback === true && data?.reason_code === "GEMINI_RATE_LIMITED") {
-          liveTranslateCooldownUntilRef.current = Date.now() + 60_000
-          if (!liveRateLimitNotifiedRef.current) {
-            toast.info("번역 요청이 많아 1분간 라이브 번역을 잠시 쉬어요.")
-            liveRateLimitNotifiedRef.current = true
-          }
-          return
-        }
-        if (data?.fallback !== true) {
-          liveRateLimitNotifiedRef.current = false
-        }
-        const korean = typeof data?.korean_translation === "string" ? data.korean_translation : ""
-        if (!korean) return
-        lastLiveTranslatedRef.current = tail
-        setRecentTranslation({
-          source: typeof data?.source === "string" && data.source ? data.source : tail,
-          korean,
-        })
-      } catch {
-        // Keep live translation best-effort.
-      } finally {
-        setIsLiveTranslating(false)
-      }
-    }, 2000)
-
-    return () => clearTimeout(timer)
+    setRecentSnippet(extractRecentTail(combined, 1))
   }, [isRecording, transcript, interimTranscript])
 
   const handleAutoDiarize = useCallback(async () => {
@@ -1407,18 +1329,6 @@ export function EnglishLearningApp() {
                 </Button>
               </div>
             )}
-            {transcript && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 gap-1.5 text-xs w-fit"
-                onClick={handleTranslateRecent}
-                disabled={isTranslatingRecent}
-              >
-                {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
-                가장 최근 2-3문장 번역
-              </Button>
-            )}
           </div>
 
           {/* Model loading progress */}
@@ -1438,13 +1348,10 @@ export function EnglishLearningApp() {
           )}
 
           {/* Transcript */}
-          {recentTranslation?.korean && (
+          {recentSnippet && (
             <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">
-                {isRecording ? (isLiveTranslating ? "Live translating..." : "Live") : "Recent"}
-              </p>
-              <p className="text-xs text-foreground mb-1">{recentTranslation.source}</p>
-              <p className="text-sm font-medium text-primary">{recentTranslation.korean}</p>
+              <p className="text-[11px] text-muted-foreground mb-1">{isRecording ? "Live" : "Recent"}</p>
+              <p className="text-sm text-foreground">{recentSnippet}</p>
             </div>
           )}
           <TranscriptPanel
@@ -1721,18 +1628,6 @@ export function EnglishLearningApp() {
                 </Button>
               </div>
             )}
-            {transcript && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 gap-1.5 text-xs w-fit"
-                onClick={handleTranslateRecent}
-                disabled={isTranslatingRecent}
-              >
-                {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
-                가장 최근 2-3문장 번역
-              </Button>
-            )}
           </div>
 
           {/* Model loading progress */}
@@ -1752,13 +1647,10 @@ export function EnglishLearningApp() {
           )}
 
           {/* Transcript */}
-          {recentTranslation?.korean && (
+          {recentSnippet && (
             <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">
-                {isRecording ? (isLiveTranslating ? "Live translating..." : "Live") : "Recent"}
-              </p>
-              <p className="text-xs text-foreground mb-1">{recentTranslation.source}</p>
-              <p className="text-sm font-medium text-primary">{recentTranslation.korean}</p>
+              <p className="text-[11px] text-muted-foreground mb-1">{isRecording ? "Live" : "Recent"}</p>
+              <p className="text-sm text-foreground">{recentSnippet}</p>
             </div>
           )}
           <TranscriptPanel
