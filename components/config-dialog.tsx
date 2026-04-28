@@ -29,7 +29,8 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const [supabaseUrl, setSupabaseUrl] = useState("")
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("")
   const [whisperModel, setWhisperModel] = useState<WhisperModel>("tiny")
-  const [translationProvider, setTranslationProvider] = useState<TranslationProvider>("gemini")
+  const [translationProviderRecent, setTranslationProviderRecent] = useState<TranslationProvider>("gemini")
+  const [translationProviderAll, setTranslationProviderAll] = useState<TranslationProvider>("translate_api")
   const [topWordExcludes, setTopWordExcludes] = useState<string[]>([])
   const [excludeInput, setExcludeInput] = useState("")
 
@@ -41,7 +42,8 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       setSupabaseUrl(cfg.supabaseUrl)
       setSupabaseAnonKey(cfg.supabaseAnonKey)
       setWhisperModel(cfg.whisperModel === "medium" ? "small" : (cfg.whisperModel ?? "tiny"))
-      setTranslationProvider(cfg.translationProvider ?? "gemini")
+      setTranslationProviderRecent(cfg.translationProviderRecent ?? "gemini")
+      setTranslationProviderAll(cfg.translationProviderAll ?? "translate_api")
       setTopWordExcludes(Array.isArray(cfg.topWordExcludes) ? cfg.topWordExcludes : [])
       setExcludeInput("")
     }
@@ -52,7 +54,15 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const canSave = mode === "local" || (urlValid && keyValid)
 
   function handleSave() {
-    const config: StorageConfig = { mode, supabaseUrl, supabaseAnonKey, whisperModel, translationProvider, topWordExcludes }
+    const config: StorageConfig = {
+      mode,
+      supabaseUrl,
+      supabaseAnonKey,
+      whisperModel,
+      translationProviderRecent,
+      translationProviderAll,
+      topWordExcludes,
+    }
     saveStorageConfig(config)
     onSave(config)
     onOpenChange(false)
@@ -191,8 +201,21 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Translation provider</Label>
-          <Select value={translationProvider} onValueChange={(value) => setTranslationProvider(value as TranslationProvider)}>
+          <Label className="text-xs">Translate recent provider</Label>
+          <Select value={translationProviderRecent} onValueChange={(value) => setTranslationProviderRecent(value as TranslationProvider)}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gemini">Gemini API (better quality)</SelectItem>
+              <SelectItem value="translate_api">Translate API (lower cost)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Translate all provider</Label>
+          <Select value={translationProviderAll} onValueChange={(value) => setTranslationProviderAll(value as TranslationProvider)}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
