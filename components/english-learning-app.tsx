@@ -46,6 +46,8 @@ import {
   EyeOff,
   FileDown,
   Lock,
+  WandSparkles,
+  Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getStorageConfig, saveStorageConfig, StorageConfig } from "@/lib/storage-config"
@@ -121,7 +123,7 @@ export function EnglishLearningApp() {
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
 
   // Transcription hook
-  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, start, stop, reset, setTranscript } =
+  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, recordedAudioBlob, isRefining, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
       whisperModel: storageConfig.whisperModel,
@@ -488,6 +490,20 @@ export function EnglishLearningApp() {
       setIsTranslatingRecent(false)
     }
   }, [transcript, interimTranscript])
+
+  const handleRefineTranscript = useCallback(async () => {
+    try {
+      const refined = await refineTranscript("small")
+      if (refined) {
+        toast.success("Transcript refined with higher-accuracy model")
+      } else {
+        toast.info("No refined transcript produced")
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to refine transcript"
+      toast.error(msg)
+    }
+  }, [refineTranscript])
 
   // Load a past conversation
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
@@ -1239,6 +1255,29 @@ export function EnglishLearningApp() {
                     <MousePointerClick className="h-3 w-3" />
                     Select text to save a word
                   </p>
+                )}
+                {recordedAudioBlob && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={() => void handleRefineTranscript()}
+                      disabled={isRefining}
+                    >
+                      {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+                      {isRefining ? "Refining..." : "Re-transcribe (HQ)"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={downloadRecording}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Audio
+                    </Button>
+                  </>
                 )}
               </div>
             )}

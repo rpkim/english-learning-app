@@ -88,6 +88,8 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     workerState: "idle",
     lastWorkerError: null,
   })
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null)
+  const [isRefining, setIsRefining] = useState(false)
 
   const workerRef = useRef<Worker | null>(null)
   const onTranscriptRef = useRef(onTranscript)
@@ -96,6 +98,8 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordedChunksRef = useRef<Blob[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioBufferRef = useRef<Float32Array[]>([])
   const inputSampleRateRef = useRef(16000)
@@ -107,6 +111,11 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
   const chunkIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const workerReadyRef = useRef(false)
   const workerBusyRef = useRef(false)
+  const workerReadyWaitersRef = useRef<Array<() => void>>([])
+  const transcribeRequestRef = useRef<{
+    resolve: (text: string) => void
+    reject: (message: string) => void
+  } | null>(null)
   // Ref to stable stop fn to avoid circular useCallback deps
   const stopRef = useRef<() => void>(() => {})
 
@@ -133,10 +142,19 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           setLoadingFile(file ?? "")
         } else if (type === "ready") {
           workerReadyRef.current = true
+          if (workerReadyWaitersRef.current.length > 0) {
+            for (const resolve of workerReadyWaitersRef.current) resolve()
+            workerReadyWaitersRef.current = []
+          }
           setDebugInfo((prev) => ({ ...prev, workerState: "ready", lastWorkerError: null }))
           setStatus("ready")
         } else if (type === "result" && text) {
           workerBusyRef.current = false
+          if (transcribeRequestRef.current) {
+            transcribeRequestRef.current.resolve(String(text ?? ""))
+            transcribeRequestRef.current = null
+            return
+          }
           const clean = text.trim()
           if (clean && clean !== "[BLANK_AUDIO]") {
             setTranscript((prev) => appendNonDuplicateTranscript(prev, clean))
@@ -145,12 +163,20 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           }
         } else if (type === "error") {
           workerBusyRef.current = false
+          if (transcribeRequestRef.current) {
+            transcribeRequestRef.current.reject(message ?? "Unknown worker error")
+            transcribeRequestRef.current = null
+          }
           setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: message ?? "Unknown worker error" }))
           onErrorRef.current?.(message)
         }
       }
       worker.onerror = () => {
         workerBusyRef.current = false
+        if (transcribeRequestRef.current) {
+          transcribeRequestRef.current.reject("Worker runtime error")
+          transcribeRequestRef.current = null
+        }
         workerReadyRef.current = false
         setDebugInfo((prev) => ({ ...prev, workerState: "error", lastWorkerError: "Worker runtime error" }))
         if (hasWebSpeechSupport()) {
@@ -275,6 +301,13 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     setDebugInfo((prev) => ({ ...prev, chunksSent: prev.chunksSent + 1 }))
   }, [])
 
+  const waitForWorkerReady = useCallback(async () => {
+    if (workerReadyRef.current) return
+    await new Promise<void>((resolve) => {
+      workerReadyWaitersRef.current.push(resolve)
+    })
+  }, [])
+
   /** Core recording setup once we have a MediaStream */
   const startFromStream = useCallback(
     (stream: MediaStream, source: "system" | "microphone") => {
@@ -287,6 +320,8 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
       }
 
       streamRef.current = stream
+      recordedChunksRef.current = []
+      setRecordedAudioBlob(null)
       isRecordingRef.current = true
       setAudioSource(source)
       setDuration(0)
@@ -311,6 +346,27 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           onErrorRef.current?.("Audio signal not detected from the shared source. Try re-sharing the tab with tab audio enabled.")
         }
       }, 3000)
+
+      try {
+        if (typeof MediaRecorder !== "undefined") {
+          const recordingStream = new MediaStream(audioTracks)
+          const recorder = new MediaRecorder(recordingStream)
+          recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunksRef.current.push(event.data)
+            }
+          }
+          recorder.onstop = () => {
+            if (recordedChunksRef.current.length === 0) return
+            const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || "audio/webm" })
+            setRecordedAudioBlob(blob)
+          }
+          recorder.start(1000)
+          mediaRecorderRef.current = recorder
+        }
+      } catch {
+        mediaRecorderRef.current = null
+      }
 
       if (useWebSpeech) {
         startWebSpeech(stream)
@@ -470,6 +526,12 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
 
+    // Finalize recording blob
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop()
+    }
+    mediaRecorderRef.current = null
+
     // Cleanup audio context
     processorRef.current?.disconnect()
     audioContextRef.current?.close()
@@ -491,7 +553,73 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     setTranscript("")
     setInterimTranscript("")
     setDuration(0)
+    setRecordedAudioBlob(null)
+    recordedChunksRef.current = []
   }, [])
+
+  const refineTranscript = useCallback(async (model: "tiny" | "base" | "small" | "medium" = "small") => {
+    if (isRecordingRef.current) {
+      throw new Error("Stop recording before refining transcript")
+    }
+    if (!recordedAudioBlob) {
+      throw new Error("No recorded audio available for refinement")
+    }
+    if (!workerRef.current) {
+      throw new Error("Transcription worker is not ready")
+    }
+
+    setIsRefining(true)
+    try {
+      workerRef.current.postMessage({ type: "load", model })
+      await waitForWorkerReady()
+
+      const audioBuffer = await blobToAudioBuffer(recordedAudioBlob)
+      const mono = mixToMono(audioBuffer)
+      const prepared = audioBuffer.sampleRate === TARGET_SAMPLE_RATE
+        ? normalizeAudio(mono)
+        : downsampleTo16kHz(mono, audioBuffer.sampleRate)
+
+      const chunkSamples = TARGET_SAMPLE_RATE * 10
+      const strideSamples = TARGET_SAMPLE_RATE * 9
+      let nextTranscript = ""
+      for (let start = 0; start < prepared.length; start += strideSamples) {
+        const end = Math.min(prepared.length, start + chunkSamples)
+        const segment = prepared.slice(start, end)
+        if (segment.length < TARGET_SAMPLE_RATE) break
+        const resultPromise = new Promise<string>((resolve, reject) => {
+          transcribeRequestRef.current = { resolve, reject }
+          workerBusyRef.current = true
+          workerRef.current?.postMessage(
+            { type: "transcribe", audio: segment, samplingRate: TARGET_SAMPLE_RATE, model },
+            [segment.buffer]
+          )
+        })
+        const text = (await resultPromise).trim()
+        if (text && text !== "[BLANK_AUDIO]") {
+          nextTranscript = appendNonDuplicateTranscript(nextTranscript, text)
+        }
+      }
+
+      if (nextTranscript.trim()) {
+        setTranscript(nextTranscript.trim())
+      }
+      return nextTranscript.trim()
+    } finally {
+      setIsRefining(false)
+    }
+  }, [recordedAudioBlob, waitForWorkerReady])
+
+  const downloadRecording = useCallback(() => {
+    if (!recordedAudioBlob) return
+    const url = URL.createObjectURL(recordedAudioBlob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `surviveenglish-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [recordedAudioBlob])
 
   // Auto-init worker on mount
   useEffect(() => {
@@ -524,11 +652,42 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     duration,
     audioSource,
     debugInfo,
+    recordedAudioBlob,
+    isRefining,
     start,
     stop,
     reset,
+    refineTranscript,
+    downloadRecording,
     setTranscript,
   }
+}
+
+async function blobToAudioBuffer(blob: Blob) {
+  const arrayBuffer = await blob.arrayBuffer()
+  const audioCtx = new AudioContext()
+  try {
+    const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0))
+    return decoded
+  } finally {
+    await audioCtx.close().catch(() => {})
+  }
+}
+
+function mixToMono(buffer: AudioBuffer) {
+  const frames = buffer.length
+  const channels = buffer.numberOfChannels
+  const mono = new Float32Array(frames)
+  if (channels <= 1) {
+    mono.set(buffer.getChannelData(0))
+    return mono
+  }
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch)
+    for (let i = 0; i < frames; i++) mono[i] += data[i]
+  }
+  for (let i = 0; i < frames; i++) mono[i] /= channels
+  return mono
 }
 
 function downsampleTo16kHz(buffer: Float32Array, inputSampleRate: number) {
