@@ -1,11 +1,13 @@
 export type StorageMode = "supabase" | "local"
 export type WhisperModel = "tiny" | "base" | "small" | "medium"
+export type TranslationProvider = "gemini" | "translate_api"
 
 export interface StorageConfig {
   mode: StorageMode
   supabaseUrl: string
   supabaseAnonKey: string
   whisperModel: WhisperModel
+  translationProvider: TranslationProvider
   topWordExcludes: string[]
 }
 
@@ -23,6 +25,7 @@ const DEFAULT_CONFIG: StorageConfig = {
   supabaseUrl: "",
   supabaseAnonKey: "",
   whisperModel: "tiny",
+  translationProvider: "gemini",
   topWordExcludes: [],
 }
 

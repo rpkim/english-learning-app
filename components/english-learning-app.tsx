@@ -31,6 +31,7 @@ import {
   HardDrive,
   Pencil,
   Check,
+  Languages,
   Globe,
   Monitor,
   Mic,
@@ -91,7 +92,9 @@ export function EnglishLearningApp() {
   const [showStartSourceDialog, setShowStartSourceDialog] = useState(false)
   const [startViewMode, setStartViewMode] = useState<"compact" | "full">("full")
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
+  const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
   const [recentSnippet, setRecentSnippet] = useState("")
+  const [recentSnippetTranslation, setRecentSnippetTranslation] = useState("")
   const [diarizedItems, setDiarizedItems] = useState<Array<{ text: string; speaker: "A" | "B" }>>([])
   const [isDiarizing, setIsDiarizing] = useState(false)
   const [speakerAssignmentsByConversation, setSpeakerAssignmentsByConversation] = useState<Record<string, Record<string, "A" | "B">>>({})
@@ -254,7 +257,7 @@ export function EnglishLearningApp() {
       const res = await fetch("/api/translate-recent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: input }),
+        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProvider }),
       })
       if (!res.ok) throw new Error("Failed to translate selected text")
       const data = await res.json()
@@ -265,7 +268,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsTranslatingSelectedText(false)
     }
-  }, [])
+  }, [storageConfig.translationProvider])
 
   // Save session + auto-extract vocabulary
   const handleSave = useCallback(async () => {
@@ -443,6 +446,7 @@ export function EnglishLearningApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider: storageConfig.translationProvider,
           word: item.word,
           type: item.type,
           definition: item.definition,
@@ -478,15 +482,44 @@ export function EnglishLearningApp() {
     } finally {
       setTranslatingId(null)
     }
-  }, [isLocal])
+  }, [isLocal, storageConfig.translationProvider])
+
+  const handleTranslateRecent = useCallback(async () => {
+    const input = recentSnippet || extractRecentTail(`${transcript} ${interimTranscript}`.trim(), 1)
+    if (!input) return
+    setIsTranslatingRecent(true)
+    try {
+      const res = await fetch("/api/translate-recent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: input, provider: storageConfig.translationProvider }),
+      })
+      if (!res.ok) throw new Error("Failed to translate recent lines")
+      const data = await res.json()
+      const korean = typeof data?.korean_translation === "string" ? data.korean_translation : ""
+      setRecentSnippetTranslation(korean)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsTranslatingRecent(false)
+    }
+  }, [recentSnippet, transcript, interimTranscript, storageConfig.translationProvider])
 
   useEffect(() => {
     const combined = `${transcript} ${interimTranscript}`.trim()
     if (!combined) {
       setRecentSnippet("")
+      setRecentSnippetTranslation("")
       return
     }
-    setRecentSnippet(extractRecentTail(combined, 1))
+    const nextSnippet = extractRecentTail(combined, 1)
+    setRecentSnippet((prev) => {
+      if (prev !== nextSnippet) {
+        setRecentSnippetTranslation("")
+      }
+      return nextSnippet
+    })
   }, [isRecording, transcript, interimTranscript])
 
   const handleAutoDiarize = useCallback(async () => {
@@ -764,6 +797,7 @@ export function EnglishLearningApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider: storageConfig.translationProvider,
           items: targets.map((item) => ({
             id: item.id,
             word: item.word,
@@ -815,7 +849,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsBatchTranslating(false)
     }
-  }, [scopedVocabulary, isLocal])
+  }, [scopedVocabulary, isLocal, storageConfig.translationProvider])
 
   const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
   const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
@@ -1277,7 +1311,7 @@ export function EnglishLearningApp() {
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-            {!isRecording && transcript && (
+            {(isRecording || transcript) && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
@@ -1327,6 +1361,16 @@ export function EnglishLearningApp() {
                   {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
                   {isDiarizing ? "Labeling..." : "Auto label speakers"}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleTranslateRecent()}
+                  disabled={isTranslatingRecent || !recentSnippet}
+                >
+                  {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                  Translate recent
+                </Button>
               </div>
             )}
           </div>
@@ -1352,6 +1396,7 @@ export function EnglishLearningApp() {
             <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
               <p className="text-[11px] text-muted-foreground mb-1">{isRecording ? "Live" : "Recent"}</p>
               <p className="text-sm text-foreground">{recentSnippet}</p>
+              {recentSnippetTranslation && <p className="mt-1 text-sm font-medium text-primary">{recentSnippetTranslation}</p>}
             </div>
           )}
           <TranscriptPanel
@@ -1465,8 +1510,9 @@ export function EnglishLearningApp() {
                           {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}PDF
                         </Button>
                         <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => { setShowManualAdd(true); setManualWord("") }}><Plus className="h-3.5 w-3.5" />Add</Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => void handleTranslateScoped()} disabled={isBatchTranslating} title="Translate all in current scope">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => void handleTranslateScoped()} disabled={isBatchTranslating} title="Translate all in current scope">
                           {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+                          Translate all
                         </Button>
                       </div>
                     </div>
@@ -1576,7 +1622,7 @@ export function EnglishLearningApp() {
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-            {!isRecording && transcript && (
+            {(isRecording || transcript) && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
@@ -1626,6 +1672,16 @@ export function EnglishLearningApp() {
                   {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
                   {isDiarizing ? "Labeling..." : "Auto label speakers"}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => void handleTranslateRecent()}
+                  disabled={isTranslatingRecent || !recentSnippet}
+                >
+                  {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                  Translate recent
+                </Button>
               </div>
             )}
           </div>
@@ -1651,6 +1707,7 @@ export function EnglishLearningApp() {
             <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
               <p className="text-[11px] text-muted-foreground mb-1">{isRecording ? "Live" : "Recent"}</p>
               <p className="text-sm text-foreground">{recentSnippet}</p>
+              {recentSnippetTranslation && <p className="mt-1 text-sm font-medium text-primary">{recentSnippetTranslation}</p>}
             </div>
           )}
           <TranscriptPanel
@@ -1861,12 +1918,13 @@ export function EnglishLearningApp() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0"
+                    className="h-7 px-2 text-xs gap-1"
                     onClick={() => void handleTranslateScoped()}
                     disabled={isBatchTranslating}
                     title="Translate all in current scope"
                   >
                     {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+                    Translate all
                   </Button>
                 </div>
               </div>

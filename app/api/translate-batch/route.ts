@@ -10,10 +10,22 @@ interface BatchItem {
   context?: string | null
 }
 
+async function translateWithPublicApi(text: string) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=${encodeURIComponent(text)}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Translate API failed with status ${res.status}`)
+  const data = await res.json()
+  const translated = Array.isArray(data?.[0])
+    ? data[0].map((row: unknown) => (Array.isArray(row) ? String(row[0] ?? "") : "")).join("")
+    : ""
+  return translated.trim()
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
     const items: BatchItem[] = Array.isArray(body?.items) ? body.items : []
+    const provider: "gemini" | "translate_api" = body?.provider === "translate_api" ? "translate_api" : "gemini"
     if (items.length === 0) {
       return NextResponse.json({
         translations: {} as Record<string, string>,
@@ -21,6 +33,28 @@ export async function POST(request: Request) {
         reason_code: "EMPTY_ITEMS",
         reason_message: "No items were provided.",
       })
+    }
+
+    if (provider === "translate_api") {
+      const trimmed = items.slice(0, 80)
+      const translations: Record<string, string> = {}
+      for (const item of trimmed) {
+        const text = [item.word, item.definition, item.example_sentence].filter(Boolean).join(" — ")
+        try {
+          translations[item.id] = await translateWithPublicApi(text || item.word)
+        } catch {
+          // Keep partial results when provider is rate-limited.
+        }
+      }
+      if (Object.keys(translations).length === 0) {
+        return NextResponse.json({
+          translations,
+          fallback: true,
+          reason_code: "TRANSLATE_API_FAILED",
+          reason_message: "Translate API returned no successful result.",
+        })
+      }
+      return NextResponse.json({ translations })
     }
 
     const apiKey = process.env.GEMINI_API_KEY
