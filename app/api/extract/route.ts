@@ -9,6 +9,39 @@ type ExtractedItem = {
   context: string
 }
 
+function normalizeExtractType(rawType: unknown): ExtractedItem["type"] {
+  const value = typeof rawType === "string" ? rawType.trim().toLowerCase().replace(/[\s-]+/g, "_") : ""
+  if (value === "word" || value === "idiom" || value === "slang" || value === "phrasal_verb" || value === "expression") {
+    return value
+  }
+  if (value === "phrase" || value === "collocation") return "expression"
+  return "word"
+}
+
+function coerceExtractedItems(raw: unknown): ExtractedItem[] {
+  const candidateList = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { items?: unknown }).items)
+      ? (raw as { items: unknown[] }).items
+      : []
+
+  return candidateList
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null
+      const item = entry as Partial<Record<keyof ExtractedItem, unknown>>
+      const word = typeof item.word === "string" ? item.word.trim() : ""
+      if (!word) return null
+      return {
+        word,
+        type: normalizeExtractType(item.type),
+        definition: typeof item.definition === "string" ? item.definition.trim() : "",
+        example_sentence: typeof item.example_sentence === "string" ? item.example_sentence.trim() : "",
+        context: typeof item.context === "string" ? item.context.trim() : "",
+      } satisfies ExtractedItem
+    })
+    .filter((item): item is ExtractedItem => item !== null)
+}
+
 function fallbackExtract(transcript: string): ExtractedItem[] {
   const lower = transcript.toLowerCase()
   const items: ExtractedItem[] = []
@@ -109,9 +142,10 @@ ${transcript}`
     // Strip markdown code fences if present
     const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
 
-    let items = []
+    let items: ExtractedItem[] = []
     try {
-      items = JSON.parse(cleaned)
+      const parsed = JSON.parse(cleaned)
+      items = coerceExtractedItems(parsed)
     } catch {
       items = []
     }

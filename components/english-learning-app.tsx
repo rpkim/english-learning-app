@@ -315,7 +315,8 @@ export function EnglishLearningApp() {
         } catch {}
         throw new Error(message)
       }
-      const { items }: { items: ExtractedItem[] } = await extractRes.json()
+      const data: { items?: ExtractedItem[] } = await extractRes.json()
+      const items: ExtractedItem[] = Array.isArray(data?.items) ? data.items : []
 
       if (items.length === 0) {
         toast.info("No new vocabulary items found in this transcript.")
@@ -2217,9 +2218,19 @@ export function EnglishLearningApp() {
   )
 }
 
-function normalizeVocabType(type: VocabularyItem["type"]): VocabularyItem["type"] {
-  if (type === "word" || type === "idiom" || type === "slang") return type
-  return "idiom"
+function normalizeVocabType(type: VocabularyItem["type"] | string): VocabularyItem["type"] {
+  const normalized = String(type).trim().toLowerCase().replace(/[\s-]+/g, "_")
+  if (
+    normalized === "word" ||
+    normalized === "idiom" ||
+    normalized === "slang" ||
+    normalized === "phrasal_verb" ||
+    normalized === "expression"
+  ) {
+    return normalized
+  }
+  if (normalized === "phrase" || normalized === "collocation") return "expression"
+  return "word"
 }
 
 function extractRecentTail(text: string, sentenceCount: number) {
