@@ -1,53 +1,50 @@
 "use client"
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, type ChangeEvent } from "react"
 import { AudioInputSource, useTranscription } from "@/hooks/use-transcription"
-import { TranscriptPanel } from "@/components/transcript-panel"
-import { RecordingControls } from "@/components/recording-controls"
-import { VocabularyCard } from "@/components/vocabulary-card"
-import { ConversationHistory } from "@/components/conversation-history"
-import { ManualAddForm } from "@/components/manual-add-form"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { TranscriptionColumn } from "@/components/transcription-column"
+import { LibraryColumn } from "@/components/library-column"
 import { ConfigDialog } from "@/components/config-dialog"
 import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Toaster } from "@/components/ui/sonner"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { jsPDF } from "jspdf"
 import {
   BookOpen,
-  Plus,
   History,
   GraduationCap,
   Loader2,
   AlertCircle,
-  MousePointerClick,
   Settings2,
   Database,
   HardDrive,
-  Pencil,
-  Check,
-  Languages,
-  Globe,
   Monitor,
   Mic,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
   PanelRightOpen,
   Pin,
   PinOff,
   Minimize2,
   Maximize2,
-  EyeOff,
-  FileDown,
   Lock,
-  WandSparkles,
-  Download,
+  MoreHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -119,6 +116,9 @@ export function EnglishLearningApp() {
   const [isSubmittingManual, setIsSubmittingManual] = useState(false)
   const [isTranslatingSelectedText, setIsTranslatingSelectedText] = useState(false)
   const [translatedSelectedText, setTranslatedSelectedText] = useState<string | null>(null)
+  const transcriptFileInputRef = useRef<HTMLInputElement>(null)
+  const [showPasteTranscriptDialog, setShowPasteTranscriptDialog] = useState(false)
+  const [pasteTranscriptDraft, setPasteTranscriptDraft] = useState("")
 
   // History state
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -131,6 +131,8 @@ export function EnglishLearningApp() {
   const [isDesktop, setIsDesktop] = useState(false)
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
+  const isMobile = useIsMobile()
+  const [mobileMainTab, setMobileMainTab] = useState<"session" | "library">("session")
 
   // Transcription hook
   const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, utterances, recordedAudioBlob, isRefining, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
@@ -274,9 +276,108 @@ export function EnglishLearningApp() {
     }
   }, [storageConfig.translationProviderRecent])
 
-  // Save session + auto-extract vocabulary
+  // Save session + auto-extract vocabulary, or re-run extract on the same saved session
   const handleSave = useCallback(async () => {
     if (!transcript.trim()) return
+
+    const reuseConversationId = currentConversationId
+    const isReextract = isCurrentTranscriptSaved && Boolean(reuseConversationId)
+
+    if (isReextract && reuseConversationId) {
+      setIsExtracting(true)
+      try {
+        if (isLocal) {
+          const updated = localUpdateConversationTranscript(reuseConversationId, transcript)
+          if (!updated) throw new Error("Failed to update session")
+          setConversations(localGetConversations())
+        } else {
+          const patchRes = await fetch(`/api/conversations/${reuseConversationId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript }),
+          })
+          if (!patchRes.ok) throw new Error("Failed to update session")
+          await fetchConversations()
+        }
+
+        const extractRes = await fetch("/api/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript }),
+        })
+        if (!extractRes.ok) {
+          let message = "Extraction failed"
+          try {
+            const body = await extractRes.json()
+            if (typeof body?.error === "string" && body.error) message = body.error
+          } catch {}
+          throw new Error(message)
+        }
+        const data: { items?: ExtractedItem[] } = await extractRes.json()
+        const items: ExtractedItem[] = Array.isArray(data?.items) ? data.items : []
+
+        const existingNorm = new Set(
+          vocabulary
+            .filter((v) => v.conversation_id === reuseConversationId)
+            .map((v) => v.word.trim().toLowerCase())
+        )
+        const freshItems = items.filter((item) => !existingNorm.has(item.word.trim().toLowerCase()))
+
+        if (freshItems.length === 0) {
+          toast.info(
+            items.length === 0
+              ? "No vocabulary items found in this transcript."
+              : "All extracted items are already in this session. Try editing the transcript, then extract again."
+          )
+        } else {
+          let saved: VocabularyItem[]
+          if (isLocal) {
+            saved = freshItems.map((item) =>
+              localCreateVocabularyItem({
+                conversation_id: reuseConversationId,
+                word: item.word,
+                type: normalizeVocabType(item.type),
+                definition: item.definition,
+                example_sentence: item.example_sentence,
+                context: item.context,
+                korean_translation: null,
+              })
+            )
+          } else {
+            const savePromises = freshItems.map((item) =>
+              fetch("/api/vocabulary", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  conversation_id: reuseConversationId,
+                  word: item.word,
+                  type: normalizeVocabType(item.type),
+                  definition: item.definition,
+                  example_sentence: item.example_sentence,
+                  context: item.context,
+                }),
+              }).then((r) => r.json())
+            )
+            saved = await Promise.all(savePromises)
+          }
+          setVocabulary((prev) => [...saved, ...prev])
+          toast.success(`Added ${saved.length} new vocabulary item${saved.length !== 1 ? "s" : ""}!`)
+        }
+        setIsCurrentTranscriptSaved(true)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error"
+        toast.error(msg)
+      } finally {
+        setIsExtracting(false)
+      }
+      return
+    }
+
+    if (isCurrentTranscriptSaved && !reuseConversationId) {
+      toast.error("No session is linked to this transcript. Use New, then Save & Extract.")
+      return
+    }
+
     setIsSaving(true)
     try {
       const sessionTitle = `Session — ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
@@ -364,7 +465,130 @@ export function EnglishLearningApp() {
       setIsExtracting(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transcript, duration, isLocal])
+  }, [transcript, duration, isLocal, isCurrentTranscriptSaved, currentConversationId, vocabulary])
+
+  const handleExtractOnly = useCallback(async () => {
+    const text = transcript.trim()
+    if (text.length < 10) {
+      toast.info("Enter at least 10 characters to extract vocabulary.")
+      return
+    }
+    setIsExtracting(true)
+    try {
+      const extractRes = await fetch("/api/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: text }),
+      })
+      if (!extractRes.ok) {
+        let message = "Extraction failed"
+        try {
+          const body = await extractRes.json()
+          if (typeof body?.error === "string" && body.error) message = body.error
+        } catch {}
+        throw new Error(message)
+      }
+      const data: { items?: ExtractedItem[] } = await extractRes.json()
+      const items: ExtractedItem[] = Array.isArray(data?.items) ? data.items : []
+      const targetId = currentConversationId
+      const existingNorm = new Set(
+        vocabulary.filter((v) => v.conversation_id === targetId).map((v) => v.word.trim().toLowerCase())
+      )
+      const freshItems = items.filter((item) => !existingNorm.has(item.word.trim().toLowerCase()))
+      if (freshItems.length === 0) {
+        toast.info(
+          items.length === 0
+            ? "No vocabulary items found in this transcript."
+            : targetId
+              ? "All extracted items are already linked to this session. Use Extract again after saving, or edit the transcript."
+              : "All extracted items are already in your list for unsaved items. Save a session or edit the transcript."
+        )
+        return
+      }
+      let saved: VocabularyItem[]
+      if (isLocal) {
+        saved = freshItems.map((item) =>
+          localCreateVocabularyItem({
+            conversation_id: currentConversationId,
+            word: item.word,
+            type: normalizeVocabType(item.type),
+            definition: item.definition,
+            example_sentence: item.example_sentence,
+            context: item.context,
+            korean_translation: null,
+          })
+        )
+      } else {
+        const savePromises = freshItems.map((item) =>
+          fetch("/api/vocabulary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversation_id: currentConversationId,
+              word: item.word,
+              type: normalizeVocabType(item.type),
+              definition: item.definition,
+              example_sentence: item.example_sentence,
+              context: item.context,
+            }),
+          }).then((r) => r.json())
+        )
+        saved = await Promise.all(savePromises)
+      }
+      setVocabulary((prev) => [...saved, ...prev])
+      toast.success(`Added ${saved.length} new vocabulary item${saved.length !== 1 ? "s" : ""}!`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    } finally {
+      setIsExtracting(false)
+    }
+  }, [transcript, currentConversationId, isLocal, vocabulary])
+
+  const applyTranscriptImport = useCallback(
+    (raw: string) => {
+      const text = raw.replace(/\r\n/g, "\n").trim()
+      if (!text) {
+        toast.info("No text to import.")
+        return
+      }
+      if (transcript.trim() && typeof window !== "undefined") {
+        if (!window.confirm("Replace the current transcript with imported text?")) return
+      }
+      setTranscript(text)
+      setIsCurrentTranscriptSaved(false)
+      setCurrentConversationId(null)
+      setSelectedConversationId(null)
+      setDiarizedItems([])
+      setSpeakerPreview("")
+      setIsEditingTranscript(false)
+      setShowManualAdd(false)
+      setManualWord("")
+      toast.success("Transcript loaded")
+    },
+    [transcript, setTranscript]
+  )
+
+  const handleTranscriptFileSelected = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ""
+      if (!file) return
+      try {
+        const text = await file.text()
+        applyTranscriptImport(text)
+      } catch {
+        toast.error("Could not read that file")
+      }
+    },
+    [applyTranscriptImport]
+  )
+
+  const handleApplyPastedTranscript = useCallback(() => {
+    applyTranscriptImport(pasteTranscriptDraft)
+    setShowPasteTranscriptDialog(false)
+    setPasteTranscriptDraft("")
+  }, [applyTranscriptImport, pasteTranscriptDraft])
 
   // Manual add from form
   const handleManualAdd = useCallback(
@@ -1187,12 +1411,12 @@ export function EnglishLearningApp() {
   }, [desktopViewMode])
 
   if (!isAuthReady) {
-    return <div className="h-screen bg-background" />
+    return <div className="h-dvh max-h-dvh bg-background" />
   }
 
   if (!isUnlocked) {
     return (
-      <div className="h-screen bg-background flex items-center justify-center p-4">
+      <div className="h-dvh max-h-dvh bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-sm rounded-lg border border-border bg-card p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4 text-primary" />
@@ -1219,61 +1443,208 @@ export function EnglishLearningApp() {
     )
   }
 
+  const renderTranscription = (panelClassName?: string) => (
+    <TranscriptionColumn
+      className={cn(panelClassName)}
+      compactToolbar={isMobile}
+      showCollapseButton={!isMobile}
+      onCollapseLeft={collapseLeftPanel}
+      isRecording={isRecording}
+      status={status}
+      isSaving={isSaving}
+      isExtracting={isExtracting}
+      duration={duration}
+      audioSource={audioSource}
+      onStart={() => setShowStartSourceDialog(true)}
+      onStop={stop}
+      onSave={handleSave}
+      onExtractOnly={() => void handleExtractOnly()}
+      onPickTranscriptFile={() => transcriptFileInputRef.current?.click()}
+      onPasteTranscript={() => setShowPasteTranscriptDialog(true)}
+      onNew={() => {
+        reset()
+        setCurrentConversationId(null)
+        setSelectedConversationId(null)
+        setIsEditingTranscript(false)
+        setShowManualAdd(false)
+        setManualWord("")
+        setIsCurrentTranscriptSaved(false)
+      }}
+      hasTranscript={transcript.trim().length >= 10}
+      isCurrentTranscriptSaved={isCurrentTranscriptSaved}
+      transcript={transcript}
+      interimTranscript={interimTranscript}
+      vocabulary={vocabulary}
+      onTranscriptChange={setTranscript}
+      onTextSelect={handleTextSelect}
+      isEditingTranscript={isEditingTranscript}
+      onToggleEditTranscript={() => void handleToggleEditTranscript()}
+      recordedAudioBlob={recordedAudioBlob}
+      onRefineTranscript={() => void handleRefineTranscript()}
+      isRefining={isRefining}
+      onDownloadRecording={downloadRecording}
+      onAutoDiarize={() => void handleAutoDiarize()}
+      isDiarizing={isDiarizing}
+      onTranslateRecent={() => void handleTranslateRecent()}
+      isTranslatingRecent={isTranslatingRecent}
+      recentSnippet={recentSnippet}
+      onTranslateAllTranscript={() => void handleTranslateAllTranscript()}
+      isTranslatingAllText={isTranslatingAllText}
+      recentSnippetTranslation={recentSnippetTranslation}
+      speakerPreview={speakerPreview}
+      loadingFile={loadingFile}
+      loadingProgress={loadingProgress}
+      fullTranscriptTranslation={fullTranscriptTranslation}
+      isFullTranscriptExpanded={isFullTranscriptExpanded}
+      onToggleFullTranslationExpanded={() => setIsFullTranscriptExpanded((p) => !p)}
+      debugInfo={debugInfo}
+      showManualAdd={showManualAdd}
+      manualWord={manualWord}
+      onManualAdd={handleManualAdd}
+      onTranslateSelectedText={handleTranslateSelectedText}
+      translatedSelectedText={translatedSelectedText}
+      isTranslatingSelectedText={isTranslatingSelectedText}
+      onCancelManualAdd={() => {
+        setShowManualAdd(false)
+        setManualWord("")
+        setTranslatedSelectedText(null)
+      }}
+      isSubmittingManual={isSubmittingManual}
+    />
+  )
+
+  const renderLibrary = (soloMobile: boolean) => (
+    <LibraryColumn
+      variant={soloMobile ? "solo" : "split"}
+      onCollapseRight={soloMobile ? undefined : collapseRightPanel}
+      leftCollapsed={leftCollapsed}
+      onExpandLeft={soloMobile ? undefined : expandLeftPanel}
+      scopedVocabulary={scopedVocabulary}
+      conversations={conversations}
+      conversationGroups={conversationGroups}
+      selectedGroupId={selectedGroupId}
+      selectedConversationId={selectedConversationId}
+      onSelectConversation={handleSelectConversation}
+      onRenameConversation={handleRenameConversation}
+      onDeleteConversation={handleDeleteConversation}
+      onCreateGroup={handleCreateGroup}
+      onRenameGroup={handleRenameGroup}
+      onDeleteGroup={handleDeleteGroup}
+      onArchiveGroup={handleArchiveGroup}
+      onRestoreGroup={handleRestoreGroup}
+      onSelectGroup={handleSelectGroup}
+      onMoveConversationToGroup={handleMoveConversationToGroup}
+      workspaceStats={workspaceStats}
+      vocabView={vocabView}
+      setVocabView={setVocabView}
+      vocabFilter={vocabFilter}
+      setVocabFilter={setVocabFilter}
+      wordCount={wordCount}
+      idiomCount={idiomCount}
+      slangCount={slangCount}
+      filteredVocabulary={filteredVocabulary}
+      frequentWords={frequentWords}
+      isLoadingVocab={isLoadingVocab}
+      isBatchTranslating={isBatchTranslating}
+      isExportingPdf={isExportingPdf}
+      masteredCount={masteredCount}
+      onShowAllVocabulary={() => {
+        setSelectedConversationId(null)
+        void fetchVocabulary()
+      }}
+      onExportCsv={handleExportCsv}
+      onExportPdf={handleExportPdf}
+      onShowManualAdd={() => {
+        setShowManualAdd(true)
+        setManualWord("")
+      }}
+      onTranslateScoped={() => void handleTranslateScoped()}
+      onDeleteVocab={handleDelete}
+      onToggleMastered={handleToggleMastered}
+      onTranslate={handleTranslate}
+      translatingId={translatingId}
+      onAddFrequentWord={handleAddFrequentWord}
+      onExcludeTopWord={handleExcludeTopWord}
+    />
+  )
+
   return (
     <div
       className={cn(
-        "flex flex-col h-screen bg-background text-foreground transition-[padding] duration-200",
+        "flex flex-col h-dvh max-h-dvh min-h-0 bg-background text-foreground transition-[padding] duration-200",
         isRecording && audioSource === "system" ? "pt-14" : "pt-0"
       )}
     >
       {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <GraduationCap className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-lg font-bold leading-none text-foreground">SurviveEngilsh</h1>
-            <p className="text-xs text-muted-foreground">Real-time transcription + vocabulary builder</p>
+      <header className="border-border bg-card flex shrink-0 flex-col gap-2 border-b px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-3 sm:pt-3 min-w-0">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <GraduationCap className="text-primary h-6 w-6 shrink-0" />
+          <div className="min-w-0">
+            <h1 className="text-foreground truncate text-base font-bold leading-tight sm:text-lg">SurviveEngilsh</h1>
+            <p className="text-muted-foreground line-clamp-2 text-[11px] sm:text-xs">Real-time transcription + vocabulary builder</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap">
           {status === "loading_model" && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>
-                {loadingProgress > 0
-                  ? `Loading Whisper model ${loadingProgress}%`
-                  : "Downloading Whisper model..."}
+            <div className="bg-muted text-muted-foreground hidden min-w-0 max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs sm:flex">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+              <span className="truncate">
+                {loadingProgress > 0 ? `Loading Whisper model ${loadingProgress}%` : "Downloading Whisper model..."}
               </span>
             </div>
           )}
           {status === "error" && (
-            <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded-full">
-              <AlertCircle className="h-3 w-3" />
-              Model error — using Web Speech fallback
+            <div className="bg-destructive/10 text-destructive flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              <span className="leading-snug">Web Speech fallback</span>
             </div>
           )}
-          <Badge variant="outline" className="text-xs gap-1 hidden sm:flex">
+          <Badge variant="outline" className="hidden gap-1 text-xs sm:flex">
             <BookOpen className="h-3 w-3" />
             {vocabulary.length} words · {masteredCount} mastered
           </Badge>
-          {/* Storage mode badge */}
           <Badge
             variant="outline"
-            className={cn(
-              "text-xs gap-1 hidden sm:flex",
-              isLocal
-                ? "text-muted-foreground border-border"
-                : "text-primary border-primary/30 bg-primary/5"
-            )}
+            className={cn("hidden gap-1 text-xs sm:flex", isLocal ? "text-muted-foreground border-border" : "text-primary border-primary/30 bg-primary/5")}
           >
             {isLocal ? <HardDrive className="h-3 w-3" /> : <Database className="h-3 w-3" />}
             {isLocal ? "Local" : "Supabase"}
           </Badge>
-          {/* Config button */}
+          {isMobile && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="border-border text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 sm:hidden" aria-label="App menu">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="text-muted-foreground font-normal text-xs">Stats & storage</DropdownMenuLabel>
+                <DropdownMenuItem disabled className="text-xs">
+                  <BookOpen className="mr-2 h-3.5 w-3.5" />
+                  {vocabulary.length} words · {masteredCount} mastered
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled className="text-xs">
+                  {isLocal ? <HardDrive className="mr-2 h-3.5 w-3.5" /> : <Database className="mr-2 h-3.5 w-3.5" />}
+                  {isLocal ? "Local storage" : "Supabase"}
+                </DropdownMenuItem>
+                {status === "loading_model" && (
+                  <DropdownMenuItem disabled className="text-xs">
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    {loadingProgress > 0 ? `Whisper ${loadingProgress}%` : "Downloading model…"}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-xs" onClick={() => setShowConfig(true)}>
+                  <Settings2 className="mr-2 h-3.5 w-3.5" />
+                  Settings & storage
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground hidden h-8 w-8 p-0 sm:flex sm:h-7 sm:w-7"
             onClick={() => setShowConfig(true)}
             title="Storage configuration"
           >
@@ -1281,23 +1652,11 @@ export function EnglishLearningApp() {
           </Button>
           {isDesktop && (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs gap-1"
-                onClick={() => void handleToggleAlwaysOnTop()}
-                title="Always on top"
-              >
+              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs sm:h-7" onClick={() => void handleToggleAlwaysOnTop()} title="Always on top">
                 {alwaysOnTop ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
                 {alwaysOnTop ? "Pinned" : "Pin"}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs gap-1"
-                onClick={() => void handleToggleDesktopViewMode()}
-                title="Compact or full view"
-              >
+              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs sm:h-7" onClick={() => void handleToggleDesktopViewMode()} title="Compact or full view">
                 {desktopViewMode === "compact" ? <Maximize2 className="h-3.5 w-3.5" /> : <Minimize2 className="h-3.5 w-3.5" />}
                 {desktopViewMode === "compact" ? "Full" : "Compact"}
               </Button>
@@ -1307,847 +1666,84 @@ export function EnglishLearningApp() {
       </header>
 
       {/* Main layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {!leftCollapsed && !rightCollapsed && (
-          <ResizablePanelGroup direction="horizontal" className="flex-1">
-            <ResizablePanel
-              defaultSize={leftPanelWidthPct}
-              minSize={25}
-              maxSize={75}
-              onResize={(size) => setLeftPanelWidthPct(size)}
-              className="min-w-0"
-            >
-              <div className="flex h-full flex-col min-w-0 border-r border-border p-4 gap-3">
-          {/* Controls */}
-          <div className="flex flex-col gap-2 shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 py-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <RecordingControls
-                isRecording={isRecording}
-                isLoading={status === "loading_model" && !isRecording}
-                isSaving={isSaving}
-                isExtracting={isExtracting}
-                duration={duration}
-                audioSource={audioSource}
-                onStart={() => setShowStartSourceDialog(true)}
-                onStop={stop}
-                onSave={handleSave}
-                onNew={() => {
-                  reset()
-                  setCurrentConversationId(null)
-                  setSelectedConversationId(null)
-                  setIsEditingTranscript(false)
-                  setShowManualAdd(false)
-                  setManualWord("")
-                  setIsCurrentTranscriptSaved(false)
-                }}
-                hasTranscript={transcript.length > 20}
-                isSaved={isCurrentTranscriptSaved}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={collapseLeftPanel}
-                title="Collapse transcription panel"
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {isMobile ? (
+          <Tabs
+            value={mobileMainTab}
+            onValueChange={(v) => setMobileMainTab(v as "session" | "library")}
+            className="flex min-h-0 flex-1 flex-col gap-0"
+          >
+            <TabsList className="border-border mx-3 mt-1 grid h-12 shrink-0 grid-cols-2 gap-1 rounded-2xl border bg-muted/60 p-1 ring-1 ring-border/50">
+              <TabsTrigger
+                value="session"
+                className="data-[state=active]:bg-card gap-2 rounded-xl py-2.5 text-xs font-medium data-[state=active]:shadow-sm"
               >
-                <PanelLeftClose className="h-4 w-4" />
-              </Button>
-            </div>
-            {(isRecording || transcript) && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleToggleEditTranscript()}
-                >
-                  {isEditingTranscript ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                  {isEditingTranscript ? "Done" : "Edit"}
-                </Button>
-                {!isEditingTranscript && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MousePointerClick className="h-3 w-3" />
-                    Select text to save a word
-                  </p>
-                )}
-                {recordedAudioBlob && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={() => void handleRefineTranscript()}
-                      disabled={isRefining}
-                    >
-                      {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
-                      {isRefining ? "Refining..." : "Re-transcribe (HQ)"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={downloadRecording}
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Audio
-                    </Button>
-                  </>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleAutoDiarize()}
-                  disabled={isDiarizing}
-                >
-                  {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
-                  {isDiarizing ? "Labeling..." : "Auto label speakers"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleTranslateRecent()}
-                  disabled={isTranslatingRecent || !recentSnippet}
-                >
-                  {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
-                  Translate recent
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleTranslateAllTranscript()}
-                  disabled={isTranslatingAllText || !transcript.trim()}
-                >
-                  {isTranslatingAllText ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
-                  Translate all
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Model loading progress */}
-          {status === "loading_model" && loadingFile && (
-            <div className="shrink-0 bg-muted rounded-lg px-3 py-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span className="truncate">{loadingFile}</span>
-                <span>{loadingProgress}%</span>
-              </div>
-              <div className="w-full bg-border rounded-full h-1">
-                <div
-                  className="bg-primary h-1 rounded-full transition-all duration-300"
-                  style={{ width: `${loadingProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Transcript */}
-          {recentSnippet && (
-            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">{isRecording ? "Live" : "Recent"}</p>
-              <p className="text-sm text-foreground">{recentSnippet}</p>
-              {recentSnippetTranslation && <p className="mt-1 text-sm font-medium text-primary">{recentSnippetTranslation}</p>}
-            </div>
-          )}
-          {speakerPreview && (
-            <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">Speaker preview</p>
-              <pre className="text-xs whitespace-pre-wrap text-foreground">{speakerPreview}</pre>
-            </div>
-          )}
-          <TranscriptPanel
-            transcript={transcript}
-            interimTranscript={interimTranscript}
-            isRecording={isRecording}
-            isEditing={isEditingTranscript && !isRecording}
-            vocabulary={vocabulary}
-            onTranscriptChange={setTranscript}
-            onTextSelect={handleTextSelect}
-          />
-          {fullTranscriptTranslation && (
-            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-[11px] text-muted-foreground">Full transcript translation</p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => setIsFullTranscriptExpanded((prev) => !prev)}
-                >
-                  {isFullTranscriptExpanded ? "Fold" : "Unfold"}
-                </Button>
-              </div>
-              {isFullTranscriptExpanded && (
-                <p className="text-sm font-medium text-primary whitespace-pre-wrap">{fullTranscriptTranslation}</p>
-              )}
-            </div>
-          )}
-          {isRecording && (
-            <p className="text-[11px] text-muted-foreground font-mono">
-              dbg frames:{debugInfo.framesCaptured} chunks:{debugInfo.chunksSent} level:{debugInfo.audioLevel.toFixed(4)} worker:{debugInfo.workerState}
-              {debugInfo.lastWorkerError ? ` err:${debugInfo.lastWorkerError}` : ""}
-            </p>
-          )}
-
-          {/* Manual add form (shown when text selected) */}
-          {showManualAdd && (
-            <div className="shrink-0">
-              <ManualAddForm
-                initialWord={manualWord}
-                onAdd={handleManualAdd}
-                onTranslateSelected={handleTranslateSelectedText}
-                translatedSelectedText={translatedSelectedText}
-                isTranslatingSelected={isTranslatingSelectedText}
-                onCancel={() => { setShowManualAdd(false); setManualWord(""); setTranslatedSelectedText(null) }}
-                isSubmitting={isSubmittingManual}
-              />
-            </div>
-          )}
-              </div>
-            </ResizablePanel>
-            <ResizableHandle withHandle className="bg-border/80 hover:bg-primary/40 data-dragging:bg-primary/50" />
-            <ResizablePanel defaultSize={100 - leftPanelWidthPct} minSize={25} maxSize={75} className="min-w-0">
-              <div className="flex h-full flex-col border-l border-border min-w-0">
-                <Tabs defaultValue="vocabulary" className="flex flex-col flex-1 min-h-0">
-                  <div className="border-b border-border px-4 pt-2 shrink-0">
-                    <div className="mb-2 flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={collapseRightPanel}
-                        title="Collapse right panel"
-                      >
-                        <PanelRightClose className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    <TabsList className="w-full">
-                      <TabsTrigger value="vocabulary" className="flex-1 gap-1.5 text-xs">
-                        <BookOpen className="h-3.5 w-3.5" />
-                        Vocabulary
-                        {scopedVocabulary.length > 0 && (
-                          <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
-                            {scopedVocabulary.length}
-                          </Badge>
-                        )}
-                      </TabsTrigger>
-                      <TabsTrigger value="history" className="flex-1 gap-1.5 text-xs">
-                        <History className="h-3.5 w-3.5" />
-                        Workspace
-                        {conversations.length > 0 && (
-                          <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
-                            {conversations.length}
-                          </Badge>
-                        )}
-                      </TabsTrigger>
-                    </TabsList>
-                  </div>
-                  <TabsContent value="vocabulary" className="flex-1 flex flex-col min-h-0 m-0 p-0">
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-xs font-medium text-muted-foreground">
-                          {selectedConversationId
-                            ? "This session"
-                            : selectedGroupId === "__ungrouped__"
-                              ? "Unclassified"
-                              : selectedGroupId
-                              ? "This workspace"
-                              : "All items"}
-                        </p>
-                        <div className="flex items-center gap-1">
-                          <Button variant={vocabView === "items" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabView("items")}>Items</Button>
-                          <Button variant={vocabView === "frequency" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabView("frequency")}>Top words</Button>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button variant={vocabFilter === "all" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("all")}>All {scopedVocabulary.length}</Button>
-                          <Button variant={vocabFilter === "word" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("word")}>Words {wordCount}</Button>
-                          <Button variant={vocabFilter === "idiom" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("idiom")}>Idioms {idiomCount}</Button>
-                          <Button variant={vocabFilter === "slang" ? "secondary" : "ghost"} size="sm" className="h-6 px-2 text-[11px]" onClick={() => setVocabFilter("slang")}>Slang {slangCount}</Button>
-                        </div>
-                        {selectedConversationId && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-5 text-xs px-1.5 text-muted-foreground"
-                            onClick={() => {
-                              setSelectedConversationId(null)
-                              fetchVocabulary()
-                            }}
-                          >
-                            Show all
-                          </Button>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleExportCsv} title="Export vocabulary as CSV"><FileDown className="h-3.5 w-3.5" />CSV</Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => void handleExportPdf()} disabled={isExportingPdf} title="Export vocabulary as PDF">
-                          {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}PDF
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => { setShowManualAdd(true); setManualWord("") }}><Plus className="h-3.5 w-3.5" />Add</Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => void handleTranslateScoped()} disabled={isBatchTranslating} title="Translate all in current scope">
-                          {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
-                          Translate all
-                        </Button>
-                      </div>
-                    </div>
-                    <ScrollArea className="flex-1">
-                      <div className="p-2 flex flex-col gap-1">
-                        {isLoadingVocab ? (
-                          <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                        ) : vocabView === "items" && filteredVocabulary.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-                            <BookOpen className="h-8 w-8 opacity-30" />
-                            <p className="text-xs text-center text-balance leading-relaxed">No items in this filter yet.</p>
-                          </div>
-                        ) : vocabView === "items" ? (
-                          <>
-                            {filteredVocabulary.map((item) => (
-                              <VocabularyCard key={item.id} item={item} onDelete={handleDelete} onToggleMastered={handleToggleMastered} onTranslate={handleTranslate} isTranslating={translatingId === item.id} />
-                            ))}
-                            {masteredCount > 0 && <p className="text-center text-xs text-muted-foreground py-2">{masteredCount} of {scopedVocabulary.length} mastered</p>}
-                          </>
-                        ) : frequentWords.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-                            <BookOpen className="h-8 w-8 opacity-30" />
-                            <p className="text-xs text-center text-balance leading-relaxed">No frequent words in this scope yet.</p>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-1">
-                            {frequentWords.map((item) => (
-                              <div key={item.word} className="flex items-center justify-between rounded-md border border-border px-2 py-1">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-sm font-medium truncate">{item.word}</span>
-                                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">{item.count}</Badge>
-                                </div>
-                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => void handleAddFrequentWord(item.word)}>+ Add</Button>
-                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => handleExcludeTopWord(item.word)} title="Exclude from top words globally">
-                                  <EyeOff className="h-3 w-3 mr-1" />
-                                  Exclude
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </TabsContent>
-                  <TabsContent value="history" className="flex-1 min-h-0 m-0 p-0">
-                    <div className="h-full p-3">
-                      <ConversationHistory
-                        conversations={conversations}
-                        groups={conversationGroups}
-                        selectedGroupId={selectedGroupId}
-                        selectedId={selectedConversationId}
-                        onSelect={handleSelectConversation}
-                        onRename={handleRenameConversation}
-                        onDelete={handleDeleteConversation}
-                        onCreateGroup={handleCreateGroup}
-                        onRenameGroup={handleRenameGroup}
-                        onDeleteGroup={handleDeleteGroup}
-                        onArchiveGroup={handleArchiveGroup}
-                        onRestoreGroup={handleRestoreGroup}
-                        onSelectGroup={handleSelectGroup}
-                        onMoveConversationToGroup={handleMoveConversationToGroup}
-                        workspaceStats={workspaceStats}
-                      />
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        )}
-
-        {/* Left panel (single mode) */}
-        {!leftCollapsed && rightCollapsed && (
-        <div className="flex flex-col min-w-0 border-r border-border p-4 gap-3 flex-1">
-          {/* Controls */}
-          <div className="flex flex-col gap-2 shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 py-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <RecordingControls
-                isRecording={isRecording}
-                isLoading={status === "loading_model" && !isRecording}
-                isSaving={isSaving}
-                isExtracting={isExtracting}
-                duration={duration}
-                audioSource={audioSource}
-                onStart={() => setShowStartSourceDialog(true)}
-                onStop={stop}
-                onSave={handleSave}
-                onNew={() => {
-                  reset()
-                  setCurrentConversationId(null)
-                  setSelectedConversationId(null)
-                  setIsEditingTranscript(false)
-                  setShowManualAdd(false)
-                  setManualWord("")
-                  setIsCurrentTranscriptSaved(false)
-                }}
-                hasTranscript={transcript.length > 20}
-                isSaved={isCurrentTranscriptSaved}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={collapseLeftPanel}
-                title="Collapse transcription panel"
+                <Mic className="h-4 w-4 opacity-80" />
+                Session
+              </TabsTrigger>
+              <TabsTrigger
+                value="library"
+                className="data-[state=active]:bg-card gap-2 rounded-xl py-2.5 text-xs font-medium data-[state=active]:shadow-sm"
               >
-                <PanelLeftClose className="h-4 w-4" />
-              </Button>
-            </div>
-            {(isRecording || transcript) && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleToggleEditTranscript()}
-                >
-                  {isEditingTranscript ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                  {isEditingTranscript ? "Done" : "Edit"}
-                </Button>
-                {!isEditingTranscript && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MousePointerClick className="h-3 w-3" />
-                    Select text to save a word
-                  </p>
-                )}
-                {recordedAudioBlob && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={() => void handleRefineTranscript()}
-                      disabled={isRefining}
-                    >
-                      {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
-                      {isRefining ? "Refining..." : "Re-transcribe (HQ)"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={downloadRecording}
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Audio
-                    </Button>
-                  </>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleAutoDiarize()}
-                  disabled={isDiarizing}
-                >
-                  {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
-                  {isDiarizing ? "Labeling..." : "Auto label speakers"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleTranslateRecent()}
-                  disabled={isTranslatingRecent || !recentSnippet}
-                >
-                  {isTranslatingRecent ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
-                  Translate recent
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void handleTranslateAllTranscript()}
-                  disabled={isTranslatingAllText || !transcript.trim()}
-                >
-                  {isTranslatingAllText ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
-                  Translate all
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Model loading progress */}
-          {status === "loading_model" && loadingFile && (
-            <div className="shrink-0 bg-muted rounded-lg px-3 py-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span className="truncate">{loadingFile}</span>
-                <span>{loadingProgress}%</span>
-              </div>
-              <div className="w-full bg-border rounded-full h-1">
-                <div
-                  className="bg-primary h-1 rounded-full transition-all duration-300"
-                  style={{ width: `${loadingProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Transcript */}
-          {recentSnippet && (
-            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">{isRecording ? "Live" : "Recent"}</p>
-              <p className="text-sm text-foreground">{recentSnippet}</p>
-              {recentSnippetTranslation && <p className="mt-1 text-sm font-medium text-primary">{recentSnippetTranslation}</p>}
-            </div>
-          )}
-          {speakerPreview && (
-            <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground mb-1">Speaker preview</p>
-              <pre className="text-xs whitespace-pre-wrap text-foreground">{speakerPreview}</pre>
-            </div>
-          )}
-          <TranscriptPanel
-            transcript={transcript}
-            interimTranscript={interimTranscript}
-            isRecording={isRecording}
-            isEditing={isEditingTranscript && !isRecording}
-            vocabulary={vocabulary}
-            onTranscriptChange={setTranscript}
-            onTextSelect={handleTextSelect}
-          />
-          {fullTranscriptTranslation && (
-            <div className="shrink-0 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-[11px] text-muted-foreground">Full transcript translation</p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => setIsFullTranscriptExpanded((prev) => !prev)}
-                >
-                  {isFullTranscriptExpanded ? "Fold" : "Unfold"}
-                </Button>
-              </div>
-              {isFullTranscriptExpanded && (
-                <p className="text-sm font-medium text-primary whitespace-pre-wrap">{fullTranscriptTranslation}</p>
+                <BookOpen className="h-4 w-4 opacity-80" />
+                Library
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="session" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+              {renderTranscription(
+                "flex-1 min-h-0 border-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1"
               )}
-            </div>
-          )}
-          {isRecording && (
-            <p className="text-[11px] text-muted-foreground font-mono">
-              dbg frames:{debugInfo.framesCaptured} chunks:{debugInfo.chunksSent} level:{debugInfo.audioLevel.toFixed(4)} worker:{debugInfo.workerState}
-              {debugInfo.lastWorkerError ? ` err:${debugInfo.lastWorkerError}` : ""}
-            </p>
-          )}
-
-          {/* Manual add form (shown when text selected) */}
-          {showManualAdd && (
-            <div className="shrink-0">
-              <ManualAddForm
-                initialWord={manualWord}
-                onAdd={handleManualAdd}
-                onTranslateSelected={handleTranslateSelectedText}
-                translatedSelectedText={translatedSelectedText}
-                isTranslatingSelected={isTranslatingSelectedText}
-                onCancel={() => { setShowManualAdd(false); setManualWord(""); setTranslatedSelectedText(null) }}
-                isSubmitting={isSubmittingManual}
-              />
-            </div>
-          )}
-        </div>
-        )}
-        {leftCollapsed && (
-          <div className="w-10 border-r border-border flex items-start justify-center pt-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={expandLeftPanel}
-              title="Expand transcription panel"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
-        {/* Right panel (single mode): Vocabulary + History */}
-        {!rightCollapsed && leftCollapsed && (
-        <div className="flex flex-col border-l border-border min-w-0 flex-1">
-          <Tabs defaultValue="vocabulary" className="flex flex-col flex-1 min-h-0">
-            <div className="border-b border-border px-4 pt-2 shrink-0">
-              <div className="mb-2 flex items-center justify-end gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={collapseRightPanel}
-                  title="Collapse right panel"
-                >
-                  <PanelRightClose className="h-3.5 w-3.5" />
-                </Button>
-                {leftCollapsed && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={expandLeftPanel}
-                    title="Expand left panel"
-                  >
-                    <PanelLeftOpen className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-              <TabsList className="w-full">
-                <TabsTrigger value="vocabulary" className="flex-1 gap-1.5 text-xs">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  Vocabulary
-                  {scopedVocabulary.length > 0 && (
-                    <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
-                      {scopedVocabulary.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="history" className="flex-1 gap-1.5 text-xs">
-                  <History className="h-3.5 w-3.5" />
-                  Workspace
-                  {conversations.length > 0 && (
-                    <Badge variant="secondary" className="text-xs h-4 px-1 min-w-4">
-                      {conversations.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            {/* Vocabulary tab */}
-            <TabsContent value="vocabulary" className="flex-1 flex flex-col min-h-0 m-0 p-0">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {selectedConversationId
-                      ? "This session"
-                      : selectedGroupId === "__ungrouped__"
-                        ? "Unclassified"
-                        : selectedGroupId
-                        ? "This workspace"
-                        : "All items"}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant={vocabView === "items" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setVocabView("items")}
-                    >
-                      Items
-                    </Button>
-                    <Button
-                      variant={vocabView === "frequency" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setVocabView("frequency")}
-                    >
-                      Top words
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant={vocabFilter === "all" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setVocabFilter("all")}
-                    >
-                      All {scopedVocabulary.length}
-                    </Button>
-                    <Button
-                      variant={vocabFilter === "word" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setVocabFilter("word")}
-                    >
-                      Words {wordCount}
-                    </Button>
-                    <Button
-                      variant={vocabFilter === "idiom" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setVocabFilter("idiom")}
-                    >
-                      Idioms {idiomCount}
-                    </Button>
-                    <Button
-                      variant={vocabFilter === "slang" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setVocabFilter("slang")}
-                    >
-                      Slang {slangCount}
-                    </Button>
-                  </div>
-                  {selectedConversationId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 text-xs px-1.5 text-muted-foreground"
-                      onClick={() => {
-                        setSelectedConversationId(null)
-                        fetchVocabulary()
-                      }}
-                    >
-                      Show all
-                    </Button>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs gap-1"
-                    onClick={handleExportCsv}
-                    title="Export vocabulary as CSV"
-                  >
-                    <FileDown className="h-3.5 w-3.5" />
-                    CSV
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs gap-1"
-                    onClick={() => void handleExportPdf()}
-                    disabled={isExportingPdf}
-                    title="Export vocabulary as PDF"
-                  >
-                    {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-                    PDF
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1 text-xs"
-                    onClick={() => { setShowManualAdd(true); setManualWord("") }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs gap-1"
-                    onClick={() => void handleTranslateScoped()}
-                    disabled={isBatchTranslating}
-                    title="Translate all in current scope"
-                  >
-                    {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
-                    Translate all
-                  </Button>
-                </div>
-              </div>
-
-              <ScrollArea className="flex-1">
-                <div className="p-2 flex flex-col gap-1">
-                  {isLoadingVocab ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : vocabView === "items" && filteredVocabulary.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-                      <BookOpen className="h-8 w-8 opacity-30" />
-                      <p className="text-xs text-center text-balance leading-relaxed">
-                        No items in this filter yet.
-                      </p>
-                    </div>
-                  ) : vocabView === "items" ? (
-                    <>
-                      {filteredVocabulary.map((item) => (
-                        <VocabularyCard
-                          key={item.id}
-                          item={item}
-                          onDelete={handleDelete}
-                          onToggleMastered={handleToggleMastered}
-                          onTranslate={handleTranslate}
-                          isTranslating={translatingId === item.id}
-                        />
-                      ))}
-                      {masteredCount > 0 && (
-                        <p className="text-center text-xs text-muted-foreground py-2">
-                          {masteredCount} of {scopedVocabulary.length} mastered
-                        </p>
-                      )}
-                    </>
-                  ) : frequentWords.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-                      <BookOpen className="h-8 w-8 opacity-30" />
-                      <p className="text-xs text-center text-balance leading-relaxed">
-                        No frequent words in this scope yet.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {frequentWords.map((item) => (
-                        <div key={item.word} className="flex items-center justify-between rounded-md border border-border px-2 py-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-medium truncate">{item.word}</span>
-                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">{item.count}</Badge>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-2 text-xs"
-                            onClick={() => void handleAddFrequentWord(item.word)}
-                          >
-                            + Add
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-2 text-xs text-muted-foreground"
-                            onClick={() => handleExcludeTopWord(item.word)}
-                            title="Exclude from top words globally"
-                          >
-                            <EyeOff className="h-3 w-3 mr-1" />
-                            Exclude
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
             </TabsContent>
-
-            {/* History tab */}
-            <TabsContent value="history" className="flex-1 min-h-0 m-0 p-0">
-              <div className="h-full p-3">
-                <ConversationHistory
-                  conversations={conversations}
-                  groups={conversationGroups}
-                  selectedGroupId={selectedGroupId}
-                  selectedId={selectedConversationId}
-                  onSelect={handleSelectConversation}
-                  onRename={handleRenameConversation}
-                  onDelete={handleDeleteConversation}
-                  onCreateGroup={handleCreateGroup}
-                  onRenameGroup={handleRenameGroup}
-                  onDeleteGroup={handleDeleteGroup}
-                  onArchiveGroup={handleArchiveGroup}
-                  onRestoreGroup={handleRestoreGroup}
-                  onSelectGroup={handleSelectGroup}
-                  onMoveConversationToGroup={handleMoveConversationToGroup}
-                  workspaceStats={workspaceStats}
-                />
+            <TabsContent value="library" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+              <div className="flex min-h-0 flex-1 flex-col pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+                {renderLibrary(true)}
               </div>
             </TabsContent>
           </Tabs>
-        </div>
-        )}
-        {rightCollapsed && (
-          <div className="w-10 border-l border-border flex items-start justify-center pt-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={expandRightPanel}
-              title="Expand workspace panel"
-            >
-              <PanelRightOpen className="h-4 w-4" />
-            </Button>
-          </div>
+        ) : (
+          <>
+            {!leftCollapsed && !rightCollapsed && (
+              <ResizablePanelGroup direction="horizontal" className="flex-1">
+                <ResizablePanel
+                  defaultSize={leftPanelWidthPct}
+                  minSize={25}
+                  maxSize={75}
+                  onResize={(size) => setLeftPanelWidthPct(size)}
+                  className="min-w-0"
+                >
+                  {renderTranscription("h-full min-h-0 border-r border-border")}
+                </ResizablePanel>
+                <ResizableHandle withHandle className="bg-border/80 hover:bg-primary/40 data-dragging:bg-primary/50" />
+                <ResizablePanel defaultSize={100 - leftPanelWidthPct} minSize={25} maxSize={75} className="min-w-0">
+                  {renderLibrary(false)}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )}
+
+            {!leftCollapsed && rightCollapsed && (
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderTranscription("h-full min-h-0 border-r border-border")}</div>
+            )}
+
+            {leftCollapsed && (
+              <div className="border-border flex w-11 shrink-0 flex-col items-center border-r pt-3 sm:w-10">
+                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandLeftPanel} title="Expand transcription panel">
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {!rightCollapsed && leftCollapsed && (
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderLibrary(false)}</div>
+            )}
+
+            {rightCollapsed && !isMobile && (
+              <div className="border-border flex w-11 shrink-0 flex-col items-center border-l pt-3 sm:w-10">
+                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandRightPanel} title="Expand workspace panel">
+                  <PanelRightOpen className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -2160,6 +1756,58 @@ export function EnglishLearningApp() {
           toast.success(`Storage switched to ${cfg.mode === "local" ? "Local (browser)" : "Supabase"}`)
         }}
       />
+
+      <input
+        ref={transcriptFileInputRef}
+        type="file"
+        accept=".txt,text/plain,text/*"
+        className="hidden"
+        onChange={handleTranscriptFileSelected}
+      />
+
+      <Dialog
+        open={showPasteTranscriptDialog}
+        onOpenChange={(open) => {
+          setShowPasteTranscriptDialog(open)
+          if (!open) setPasteTranscriptDraft("")
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Paste transcript</DialogTitle>
+            <DialogDescription>
+              Paste English text (for example from subtitles or notes). Then use Extract words or Save & Extract.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="paste-transcript-body">Transcript</Label>
+            <Textarea
+              id="paste-transcript-body"
+              value={pasteTranscriptDraft}
+              onChange={(e) => setPasteTranscriptDraft(e.target.value)}
+              rows={12}
+              className="min-h-[200px] font-mono text-sm"
+              spellCheck={false}
+              placeholder="Paste English text here..."
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowPasteTranscriptDialog(false)
+                setPasteTranscriptDraft("")
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleApplyPastedTranscript()}>
+              Use transcript
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showStartSourceDialog} onOpenChange={setShowStartSourceDialog}>
         <DialogContent className="sm:max-w-sm">
@@ -2213,7 +1861,7 @@ export function EnglishLearningApp() {
         </DialogContent>
       </Dialog>
 
-      <Toaster position="bottom-right" richColors />
+      <Toaster position={isMobile ? "top-center" : "bottom-right"} richColors />
     </div>
   )
 }

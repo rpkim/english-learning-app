@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Square, Mic, Loader2, Save, Monitor, Plus } from "lucide-react"
+import { Square, Mic, Loader2, Save, Monitor, Plus, RefreshCw, Sparkles } from "lucide-react"
 
 interface RecordingControlsProps {
   isRecording: boolean
@@ -15,6 +15,7 @@ interface RecordingControlsProps {
   onStart: () => void
   onStop: () => void
   onSave: () => void
+  onExtractOnly?: () => void
   onNew: () => void
   hasTranscript: boolean
   isSaved?: boolean
@@ -36,12 +37,13 @@ export function RecordingControls({
   onStart,
   onStop,
   onSave,
+  onExtractOnly,
   onNew,
   hasTranscript,
   isSaved = false,
 }: RecordingControlsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3 [&_button]:min-h-9 sm:[&_button]:min-h-8">
       {/* Timer */}
       {(isRecording || duration > 0) && (
         <div
@@ -112,6 +114,23 @@ export function RecordingControls({
             <Plus className="h-4 w-4" />
             New
           </Button>
+          {!isSaved && onExtractOnly && (
+            <Button
+              onClick={onExtractOnly}
+              variant="secondary"
+              className="gap-1.5 h-8 px-2.5"
+              disabled={isSaving || isExtracting}
+              title="Extract vocabulary without creating a new session (links to current session when set)"
+            >
+              {isExtracting && !isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">{isExtracting && !isSaving ? "Extracting..." : "Extract words"}</span>
+              <span className="sm:hidden">{isExtracting && !isSaving ? "…" : "Extract"}</span>
+            </Button>
+          )}
           <Button
             onClick={onSave}
             variant="outline"
@@ -120,10 +139,12 @@ export function RecordingControls({
           >
             {isSaving || isExtracting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isSaved ? (
+              <RefreshCw className="h-4 w-4" />
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {isExtracting ? "Extracting..." : isSaving ? "Saving..." : isSaved ? "Saved" : "Save & Extract"}
+            {isExtracting ? "Extracting..." : isSaving ? "Saving..." : isSaved ? "Extract again" : "Save & Extract"}
           </Button>
         </>
       )}
