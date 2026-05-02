@@ -22,7 +22,7 @@ function hasBuiltInSupabaseEnv() {
 }
 
 const DEFAULT_CONFIG: StorageConfig = {
-  mode: hasBuiltInSupabaseEnv() ? "supabase" : "local",
+  mode: "local",
   supabaseUrl: "",
   supabaseAnonKey: "",
   whisperModel: "tiny",

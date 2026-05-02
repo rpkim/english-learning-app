@@ -25,7 +25,7 @@ interface ConfigDialogProps {
 }
 
 export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) {
-  const [mode, setMode] = useState<StorageMode>("supabase")
+  const [mode, setMode] = useState<StorageMode>("local")
   const [supabaseUrl, setSupabaseUrl] = useState("")
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("")
   const [whisperModel, setWhisperModel] = useState<WhisperModel>("tiny")
