@@ -5,7 +5,7 @@ import { VocabularyItem } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle } from "lucide-react"
+import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle, Sparkles, GitBranch, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TYPE_COLORS: Record<string, string> = {
@@ -48,7 +48,50 @@ export function VocabularyCard({
   isTranslating,
 }: VocabularyCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [extraExamples, setExtraExamples] = useState<string[] | null>(null)
+  const [etymology, setEtymology] = useState<string | null>(null)
+  const [relatedForms, setRelatedForms] = useState<string | null>(null)
+  const [loadingExamples, setLoadingExamples] = useState(false)
+  const [loadingEtymology, setLoadingEtymology] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   const koreanTranslationText = getKoreanTranslationText(item.korean_translation)
+
+  const runDeepDive = async (mode: "examples" | "etymology") => {
+    setAiError(null)
+    if (mode === "examples") setLoadingExamples(true)
+    else setLoadingEtymology(true)
+    try {
+      const res = await fetch("/api/vocabulary-deep-dive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: item.word,
+          type: item.type,
+          definition: item.definition ?? "",
+          example_sentence: item.example_sentence ?? "",
+          context: item.context ?? "",
+          mode,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAiError(typeof data?.error === "string" ? data.error : "Could not load AI content")
+        return
+      }
+      if (mode === "examples") {
+        const ex = Array.isArray(data?.extra_examples) ? data.extra_examples.map((x: unknown) => String(x ?? "").trim()).filter(Boolean) : []
+        setExtraExamples(ex.length ? ex : [])
+      } else {
+        setEtymology(typeof data?.etymology === "string" ? data.etymology : "")
+        setRelatedForms(typeof data?.related_forms === "string" ? data.related_forms : "")
+      }
+    } catch {
+      setAiError("Network error")
+    } finally {
+      if (mode === "examples") setLoadingExamples(false)
+      else setLoadingEtymology(false)
+    }
+  }
 
   return (
     <Card
@@ -57,11 +100,11 @@ export function VocabularyCard({
         item.is_mastered && "opacity-60"
       )}
     >
-      <CardHeader className="py-0 px-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+      <CardHeader className="py-0 px-2 overflow-hidden">
+        <div className="flex items-start justify-between gap-2 min-w-0">
+          <div className="flex flex-col gap-0.5 flex-1 min-w-0 overflow-hidden">
             <div className="flex items-center gap-1 flex-wrap min-w-0">
-            <span className="font-semibold text-foreground text-sm leading-none break-words">
+            <span className="font-semibold text-foreground text-sm leading-snug break-words [overflow-wrap:anywhere]">
               {item.word}
             </span>
             <Badge
@@ -72,16 +115,16 @@ export function VocabularyCard({
             </Badge>
             </div>
             {koreanTranslationText && (
-              <Badge className="text-xs h-4 px-1.5 w-fit max-w-full bg-korean text-korean-foreground border-0 overflow-hidden text-ellipsis whitespace-nowrap">
+              <Badge className="text-xs min-h-4 h-auto py-0.5 px-1.5 max-w-full min-w-0 self-start bg-korean text-korean-foreground border-0 break-words [overflow-wrap:anywhere] whitespace-normal text-left leading-snug">
                 {koreanTranslationText}
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-0.5 shrink-0 self-start">
+          <div className="flex items-center gap-0.5 shrink-0 self-start sticky top-0 bg-card/95 backdrop-blur-sm rounded-sm">
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5"
+              className="h-9 w-9 sm:h-5 sm:w-5"
               onClick={() => onToggleMastered(item.id, item.is_mastered)}
               title={item.is_mastered ? "Mark as not mastered" : "Mark as mastered"}
             >
@@ -95,7 +138,7 @@ export function VocabularyCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5"
+                className="h-9 w-9 sm:h-5 sm:w-5"
                 onClick={() => onTranslate(item)}
                 disabled={isTranslating}
                 title="Translate to Korean"
@@ -106,7 +149,7 @@ export function VocabularyCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5"
+              className="h-9 w-9 sm:h-5 sm:w-5"
               onClick={() => setExpanded(!expanded)}
               title="Toggle details"
             >
@@ -119,7 +162,7 @@ export function VocabularyCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5"
+              className="h-9 w-9 sm:h-5 sm:w-5"
               onClick={() => onDelete(item.id)}
               title="Delete"
             >
@@ -132,27 +175,27 @@ export function VocabularyCard({
       {expanded && (
         <CardContent className="px-1.5 pb-0 pt-0 space-y-0.5 border-t border-border mt-0">
           {item.definition && (
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Meaning</p>
-              <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{item.definition}</p>
+              <p className="text-xs text-foreground leading-relaxed whitespace-pre-line break-words [overflow-wrap:anywhere]">{item.definition}</p>
             </div>
           )}
           {item.example_sentence && (
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Example</p>
-              <p className="text-xs text-foreground italic leading-relaxed whitespace-pre-line">&ldquo;{item.example_sentence}&rdquo;</p>
+              <p className="text-xs text-foreground italic leading-relaxed whitespace-pre-line break-words [overflow-wrap:anywhere]">&ldquo;{item.example_sentence}&rdquo;</p>
             </div>
           )}
           {item.context && (
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">From transcript</p>
-              <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-muted rounded px-2 py-1">{item.context}</p>
+              <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-muted rounded px-2 py-1 break-words [overflow-wrap:anywhere]">{item.context}</p>
             </div>
           )}
           {koreanTranslationText && (
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Korean</p>
-              <p className="text-sm font-semibold text-korean">
+              <p className="text-sm font-semibold text-korean break-words [overflow-wrap:anywhere]">
                 {koreanTranslationText}
               </p>
             </div>
@@ -169,6 +212,66 @@ export function VocabularyCard({
               {isTranslating ? "Translating..." : "Translate to Korean"}
             </Button>
           )}
+
+          <div className="border-border/80 space-y-2 border-t border-dashed pt-2">
+            <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">AI deeper dive</p>
+            <div className="flex flex-wrap gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1 text-[11px]"
+                disabled={loadingExamples}
+                onClick={() => void runDeepDive("examples")}
+              >
+                {loadingExamples ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                More examples
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1 text-[11px]"
+                disabled={loadingEtymology}
+                onClick={() => void runDeepDive("etymology")}
+              >
+                {loadingEtymology ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
+                Etymology
+              </Button>
+            </div>
+            {aiError && <p className="text-destructive text-xs leading-snug">{aiError}</p>}
+            {extraExamples && extraExamples.length > 0 && (
+              <div className="min-w-0">
+                <p className="text-muted-foreground mb-1 text-[10px] font-medium uppercase tracking-wide">Extra examples</p>
+                <ul className="text-foreground list-inside list-disc space-y-1 text-xs leading-relaxed">
+                  {extraExamples.map((line, idx) => (
+                    <li key={idx} className="break-words pl-0.5 [overflow-wrap:anywhere]">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {Array.isArray(extraExamples) && extraExamples.length === 0 && !loadingExamples && (
+              <p className="text-muted-foreground text-xs">No extra examples returned.</p>
+            )}
+            {(etymology || relatedForms) && (
+              <div className="min-w-0 space-y-1">
+                {etymology ? (
+                  <div>
+                    <p className="text-muted-foreground mb-0.5 text-[10px] font-medium uppercase tracking-wide">Etymology & roots</p>
+                    <p className="text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words">{etymology}</p>
+                  </div>
+                ) : null}
+                {relatedForms ? (
+                  <p className="text-muted-foreground text-[11px] leading-snug">
+                    <span className="font-medium text-foreground">Related: </span>
+                    {relatedForms}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
         </CardContent>
       )}
     </Card>

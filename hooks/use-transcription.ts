@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, useCallback, useEffect } from "react"
+import type { LocalAsrModel } from "@/lib/storage-config"
 
 export type TranscriptionStatus =
   | "idle"
@@ -22,7 +23,7 @@ export interface TranscriptionDebugInfo {
 export interface TranscriptionUtterance {
   id: string
   text: string
-  source: "whisper" | "webspeech"
+  source: "local" | "webspeech"
   ts: number
 }
 
@@ -60,17 +61,19 @@ interface AnyWindow extends Window {
 interface UseTranscriptionOptions {
   onTranscript?: (text: string) => void
   onError?: (msg: string) => void
-  whisperModel?: "tiny" | "base" | "small" | "medium"
+  localAsrModel?: LocalAsrModel
 }
 
 const TARGET_SAMPLE_RATE = 16000
 
-function getMaxBacklogSamples(model: "tiny" | "base" | "small" | "medium") {
-  const secondsByModel: Record<"tiny" | "base" | "small" | "medium", number> = {
-    tiny: 12,
-    base: 10,
-    small: 8,
-    medium: 6,
+function getMaxBacklogSamples(model: LocalAsrModel) {
+  const secondsByModel: Record<LocalAsrModel, number> = {
+    "distil-whisper-small-en": 9,
+    "whisper-tiny": 12,
+    "whisper-base": 10,
+    "whisper-small": 8,
+    "wav2vec2-base-960h": 10,
+    "wav2vec2-large-xlsr-53-en": 8,
   }
   return TARGET_SAMPLE_RATE * secondsByModel[model]
 }
@@ -92,11 +95,11 @@ function hasWebSpeechSupport() {
 
 /**
  * useTranscription — captures computer audio output via getDisplayMedia
- * and transcribes using Whisper Tiny (local, open-source) via a Web Worker.
+ * and transcribes using a local open-source model (Whisper / Wav2Vec2) via a Web Worker.
  *
  * Falls back to Web Speech API if WebWorker/WASM is unavailable.
  */
-export function useTranscription({ onTranscript, onError, whisperModel = "tiny" }: UseTranscriptionOptions = {}) {
+export function useTranscription({ onTranscript, onError, localAsrModel = "whisper-base" }: UseTranscriptionOptions = {}) {
   const [status, setStatus] = useState<TranscriptionStatus>("idle")
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [loadingFile, setLoadingFile] = useState("")
@@ -128,7 +131,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioBufferRef = useRef<Float32Array[]>([])
   const inputSampleRateRef = useRef(16000)
-  const whisperModelRef = useRef<"tiny" | "base" | "small" | "medium">(whisperModel)
+  const localAsrModelRef = useRef<LocalAsrModel>(localAsrModel)
   const startedAtRef = useRef<number>(0)
   const audioFrameCountRef = useRef(0)
   const noAudioWarnTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -183,7 +186,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           }
           const clean = text.trim()
           if (clean && clean !== "[BLANK_AUDIO]") {
-            setUtterances((prev) => [...prev, { id: crypto.randomUUID(), text: clean, source: "whisper", ts: Date.now() }])
+            setUtterances((prev) => [...prev, { id: crypto.randomUUID(), text: clean, source: "local", ts: Date.now() }])
             setTranscript((prev) => appendNonDuplicateTranscript(prev, clean))
             setInterimTranscript("")
             onTranscriptRef.current?.(clean)
@@ -198,19 +201,19 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
           if (isOrtFailure && workerRef.current) {
             const now = Date.now()
             const shouldNotify = now - lastRecoveryNoticeAtRef.current > 10_000
-            if (whisperModelRef.current !== "tiny") {
-              whisperModelRef.current = "tiny"
+            if (localAsrModelRef.current !== "whisper-tiny") {
+              localAsrModelRef.current = "whisper-tiny"
               workerReadyRef.current = false
               setDebugInfo((prev) => ({
                 ...prev,
                 workerState: "loading",
-                lastWorkerError: message ?? "Whisper runtime error",
+                lastWorkerError: message ?? "Local ASR runtime error",
               }))
               setStatus("loading_model")
-              workerRef.current.postMessage({ type: "load", model: "tiny" })
+              workerRef.current.postMessage({ type: "load", model: "whisper-tiny" })
               if (shouldNotify) {
                 lastRecoveryNoticeAtRef.current = now
-                onErrorRef.current?.("Whisper runtime limit reached. Automatically switching to Tiny model for stability.")
+                onErrorRef.current?.("ASR runtime limit reached. Switched to Whisper Tiny for stability.")
               }
               return
             }
@@ -237,7 +240,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
         setStatus("ready")
       }
       workerRef.current = worker
-      worker.postMessage({ type: "load", model: whisperModelRef.current })
+      worker.postMessage({ type: "load", model: localAsrModelRef.current })
     } catch {
       workerReadyRef.current = false
       if (hasWebSpeechSupport()) {
@@ -252,7 +255,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
   }, [])
 
   useEffect(() => {
-    whisperModelRef.current = whisperModel
+    localAsrModelRef.current = localAsrModel
     if (workerRef.current) {
       workerRef.current.terminate()
       workerRef.current = null
@@ -260,7 +263,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
       setDebugInfo((prev) => ({ ...prev, workerState: "idle" }))
     }
     initWorker()
-  }, [whisperModel, initWorker])
+  }, [localAsrModel, initWorker])
 
   // Web Speech API fallback
   const startWebSpeech = useCallback((stream: MediaStream) => {
@@ -304,14 +307,14 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     streamRef.current = stream
   }, [])
 
-  // Process accumulated audio buffer through Whisper
+  // Process accumulated audio buffer through the local ASR worker
   const processAudioChunk = useCallback(() => {
     if (!workerRef.current || audioBufferRef.current.length === 0) return
-    // Don't flush buffered audio until the Whisper model is ready.
+    // Don't flush buffered audio until the model is ready.
     if (!workerReadyRef.current) return
     // If worker is still processing previous chunk, keep buffering but trim backlog.
     if (workerBusyRef.current) {
-      const maxBacklogSamples = getMaxBacklogSamples(whisperModelRef.current)
+      const maxBacklogSamples = getMaxBacklogSamples(localAsrModelRef.current)
       const totalLength = audioBufferRef.current.reduce((sum, buf) => sum + buf.length, 0)
       if (totalLength > maxBacklogSamples) {
         const all = new Float32Array(totalLength)
@@ -335,13 +338,13 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     audioBufferRef.current = []
 
     const inputRate = inputSampleRateRef.current
-    // Whisper works best with 16kHz mono PCM input.
+    // Models expect 16 kHz mono PCM.
     const preparedAudio =
       inputRate === TARGET_SAMPLE_RATE
         ? combined
         : downsampleTo16kHz(combined, inputRate)
 
-    const maxBacklogSamples = getMaxBacklogSamples(whisperModelRef.current)
+    const maxBacklogSamples = getMaxBacklogSamples(localAsrModelRef.current)
     const limitedAudio =
       preparedAudio.length > maxBacklogSamples
         ? preparedAudio.slice(preparedAudio.length - maxBacklogSamples)
@@ -349,7 +352,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
 
     workerBusyRef.current = true
     workerRef.current.postMessage(
-      { type: "transcribe", audio: limitedAudio, samplingRate: TARGET_SAMPLE_RATE, model: whisperModelRef.current },
+      { type: "transcribe", audio: limitedAudio, samplingRate: TARGET_SAMPLE_RATE, model: localAsrModelRef.current },
       [limitedAudio.buffer]
     )
     setDebugInfo((prev) => ({ ...prev, chunksSent: prev.chunksSent + 1 }))
@@ -432,7 +435,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
         return
       }
 
-      // Set up AudioContext → ScriptProcessor → Whisper worker
+      // Set up AudioContext → ScriptProcessor → ASR worker
       const audioCtx = new AudioContext()
       audioContextRef.current = audioCtx
       inputSampleRateRef.current = audioCtx.sampleRate
@@ -624,7 +627,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     recordedChunksRef.current = []
   }, [])
 
-  const refineTranscript = useCallback(async (model: "tiny" | "base" | "small" | "medium" = "small") => {
+  const refineTranscript = useCallback(async (model: LocalAsrModel = "whisper-small") => {
     if (isRecordingRef.current) {
       throw new Error("Stop recording before refining transcript")
     }
@@ -636,6 +639,7 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
     }
 
     setIsRefining(true)
+    let refinedText = ""
     try {
       workerRef.current.postMessage({ type: "load", model })
       await waitForWorkerReady()
@@ -690,10 +694,15 @@ export function useTranscription({ onTranscript, onError, whisperModel = "tiny" 
       if (nextTranscript.trim()) {
         setTranscript(nextTranscript.trim())
       }
-      return nextTranscript.trim()
+      refinedText = nextTranscript.trim()
     } finally {
       setIsRefining(false)
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: "load", model: localAsrModelRef.current })
+      }
     }
+    await waitForWorkerReady()
+    return refinedText
   }, [recordedAudioBlob, waitForWorkerReady])
 
   const downloadRecording = useCallback(() => {

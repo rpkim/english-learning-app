@@ -1,7 +1,6 @@
 "use client"
 
 import { Conversation, ConversationGroup } from "@/lib/types"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDistanceToNow } from "date-fns"
@@ -77,8 +76,8 @@ export function ConversationHistory({
   )
 
   const handleCreateGroup = async () => {
-    const defaultName = `Workspace ${new Date().toLocaleDateString()}`
-    const name = window.prompt("Workspace name", defaultName)
+    const defaultName = `Folder ${new Date().toLocaleDateString()}`
+    const name = window.prompt("New folder name", defaultName)
     if (!name || !name.trim()) return
     await onCreateGroup(name.trim())
   }
@@ -93,25 +92,25 @@ export function ConversationHistory({
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="flex flex-col gap-2 pr-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain pr-2 [-webkit-overflow-scrolling:touch]">
         <div className="flex items-center justify-between gap-2 px-1 py-1">
-          <div className="text-xs text-muted-foreground">Drag sessions between workspaces.</div>
+          <div className="text-xs text-muted-foreground">Drag recordings between folders to organize.</div>
           <div className="flex items-center gap-1">
             <Button
               size="sm"
               variant="outline"
               className="h-6 text-[11px] px-2"
               onClick={() => void handleCreateGroup()}
+              title="Create a new folder"
             >
               <FolderPlus className="h-3 w-3 mr-1" />
-              Add
+              New folder
             </Button>
           </div>
         </div>
 
         <Section
-          title="Unclassified"
+          title="Inbox"
           count={unclassifiedConversations.length}
           selected={selectedGroupId === "__ungrouped__"}
           dragActive={dragOverGroupId === "__ungrouped__"}
@@ -145,7 +144,7 @@ export function ConversationHistory({
             dragActive={dragOverGroupId === group.id}
             onSelect={() => onSelectGroup(group.id)}
             onRename={() => {
-              const nextName = window.prompt("Edit workspace name", group.name)
+              const nextName = window.prompt("Rename folder", group.name)
               if (!nextName) return
               const trimmed = nextName.trim()
               if (!trimmed || trimmed === group.name) return
@@ -200,8 +199,7 @@ export function ConversationHistory({
             </div>
           </div>
         )}
-      </div>
-    </ScrollArea>
+    </div>
   )
 
   function renderRow(conv: Conversation) {
@@ -282,7 +280,7 @@ export function ConversationHistory({
           )}
           {groups.some((g) => g.conversation_ids.includes(conv.id)) && (
             <Badge variant="outline" className="h-4 px-1 text-[10px] border-primary/30 bg-primary/5 text-primary">
-              Grouped
+              In folder
             </Badge>
           )}
         </div>
@@ -351,7 +349,7 @@ function Section({
                 e.stopPropagation()
                 onRename()
               }}
-              title="Rename workspace"
+              title="Rename folder"
             >
               <FolderPen className="h-3 w-3 text-muted-foreground" />
             </Button>
@@ -367,7 +365,7 @@ function Section({
                     e.stopPropagation()
                     onArchive()
                   }}
-                  title="Archive workspace"
+                  title="Archive folder"
                 >
                   <Archive className="h-3 w-3 text-muted-foreground" />
                 </Button>
@@ -380,7 +378,7 @@ function Section({
                 e.stopPropagation()
                 onDelete()
               }}
-              title="Delete group"
+              title="Delete folder"
             >
               <Trash2 className="h-3 w-3 text-muted-foreground" />
             </Button>

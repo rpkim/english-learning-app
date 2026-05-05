@@ -46,30 +46,30 @@ export function TranscriptPanel({
 
   return (
     <div
-      className="flex-1 overflow-y-auto rounded-xl border border-border bg-card p-4 font-mono text-sm leading-relaxed select-text cursor-text relative min-h-0"
+      className="border-border bg-card relative min-h-[min(40dvh,14rem)] w-full min-w-0 shrink-0 cursor-text select-text rounded-xl border p-3 font-mono text-sm leading-relaxed sm:min-h-[min(48dvh,18rem)] sm:p-4"
       onMouseUp={handleMouseUp}
       onTouchEnd={handleMouseUp}
     >
       {isEmpty ? (
-        <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+        <div className="text-muted-foreground flex min-h-[min(32dvh,12rem)] flex-col items-center justify-center gap-3 px-2 sm:min-h-[12rem]">
           <Mic2 className="h-10 w-10 opacity-30" />
           <p className="text-sm text-center text-balance">
             {isRecording
               ? "Listening... speak or play audio from your computer"
-              : "Press Start to begin transcribing your computer audio"}
+              : "Press Start to transcribe audio, or use Load / Paste in the toolbar to bring in text."}
           </p>
         </div>
       ) : isEditing ? (
         <textarea
           value={transcript}
           onChange={(e) => onTranscriptChange(e.target.value)}
-          className="h-full w-full resize-none bg-transparent text-foreground outline-none"
+          className="min-h-[min(50dvh,20rem)] w-full min-w-0 resize-none bg-transparent text-foreground outline-none break-words sm:min-h-[18rem] [overflow-wrap:anywhere]"
           spellCheck={false}
           placeholder="Edit transcript here..."
         />
       ) : (
         <>
-          <span className="text-foreground whitespace-pre-wrap">{renderHighlightedTranscript(transcript, vocabulary)}</span>
+          <span className="text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{renderHighlightedTranscript(transcript, vocabulary)}</span>
           {interimTranscript && (
             <span className={cn("text-muted-foreground", isRecording && "animate-pulse")}>
               {interimTranscript}

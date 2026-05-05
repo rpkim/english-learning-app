@@ -7,8 +7,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
 export const metadata: Metadata = {
-  title: 'SurviveEngilsh — Real-time English Learning',
-  description: 'Transcribe English audio, auto-extract vocabulary and idioms, and get Korean translations powered by Gemini.',
+  title: 'SurviveEnglish — Real-time English Learning',
+  description: 'Transcribe English, build a vocabulary list from what you hear, and review past sessions — with optional Korean translations.',
   generator: 'v0.app',
 }
 
