@@ -5,7 +5,7 @@ import { VocabularyItem } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle } from "lucide-react"
+import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle, Sparkles, GitBranch, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TYPE_COLORS: Record<string, string> = {
@@ -48,7 +48,50 @@ export function VocabularyCard({
   isTranslating,
 }: VocabularyCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [extraExamples, setExtraExamples] = useState<string[] | null>(null)
+  const [etymology, setEtymology] = useState<string | null>(null)
+  const [relatedForms, setRelatedForms] = useState<string | null>(null)
+  const [loadingExamples, setLoadingExamples] = useState(false)
+  const [loadingEtymology, setLoadingEtymology] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   const koreanTranslationText = getKoreanTranslationText(item.korean_translation)
+
+  const runDeepDive = async (mode: "examples" | "etymology") => {
+    setAiError(null)
+    if (mode === "examples") setLoadingExamples(true)
+    else setLoadingEtymology(true)
+    try {
+      const res = await fetch("/api/vocabulary-deep-dive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: item.word,
+          type: item.type,
+          definition: item.definition ?? "",
+          example_sentence: item.example_sentence ?? "",
+          context: item.context ?? "",
+          mode,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAiError(typeof data?.error === "string" ? data.error : "Could not load AI content")
+        return
+      }
+      if (mode === "examples") {
+        const ex = Array.isArray(data?.extra_examples) ? data.extra_examples.map((x: unknown) => String(x ?? "").trim()).filter(Boolean) : []
+        setExtraExamples(ex.length ? ex : [])
+      } else {
+        setEtymology(typeof data?.etymology === "string" ? data.etymology : "")
+        setRelatedForms(typeof data?.related_forms === "string" ? data.related_forms : "")
+      }
+    } catch {
+      setAiError("Network error")
+    } finally {
+      if (mode === "examples") setLoadingExamples(false)
+      else setLoadingEtymology(false)
+    }
+  }
 
   return (
     <Card
@@ -169,6 +212,66 @@ export function VocabularyCard({
               {isTranslating ? "Translating..." : "Translate to Korean"}
             </Button>
           )}
+
+          <div className="border-border/80 space-y-2 border-t border-dashed pt-2">
+            <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">AI deeper dive</p>
+            <div className="flex flex-wrap gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1 text-[11px]"
+                disabled={loadingExamples}
+                onClick={() => void runDeepDive("examples")}
+              >
+                {loadingExamples ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                More examples
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1 text-[11px]"
+                disabled={loadingEtymology}
+                onClick={() => void runDeepDive("etymology")}
+              >
+                {loadingEtymology ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
+                Etymology
+              </Button>
+            </div>
+            {aiError && <p className="text-destructive text-xs leading-snug">{aiError}</p>}
+            {extraExamples && extraExamples.length > 0 && (
+              <div className="min-w-0">
+                <p className="text-muted-foreground mb-1 text-[10px] font-medium uppercase tracking-wide">Extra examples</p>
+                <ul className="text-foreground list-inside list-disc space-y-1 text-xs leading-relaxed">
+                  {extraExamples.map((line, idx) => (
+                    <li key={idx} className="break-words pl-0.5 [overflow-wrap:anywhere]">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {Array.isArray(extraExamples) && extraExamples.length === 0 && !loadingExamples && (
+              <p className="text-muted-foreground text-xs">No extra examples returned.</p>
+            )}
+            {(etymology || relatedForms) && (
+              <div className="min-w-0 space-y-1">
+                {etymology ? (
+                  <div>
+                    <p className="text-muted-foreground mb-0.5 text-[10px] font-medium uppercase tracking-wide">Etymology & roots</p>
+                    <p className="text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words">{etymology}</p>
+                  </div>
+                ) : null}
+                {relatedForms ? (
+                  <p className="text-muted-foreground text-[11px] leading-snug">
+                    <span className="font-medium text-foreground">Related: </span>
+                    {relatedForms}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
         </CardContent>
       )}
     </Card>

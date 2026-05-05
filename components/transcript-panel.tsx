@@ -46,12 +46,12 @@ export function TranscriptPanel({
 
   return (
     <div
-      className="border-border bg-card relative flex-1 min-h-[min(48dvh,20rem)] min-w-0 cursor-text select-text overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border p-3 font-mono text-sm leading-relaxed sm:min-h-0 sm:p-4"
+      className="border-border bg-card relative min-h-[min(40dvh,14rem)] w-full min-w-0 shrink-0 cursor-text select-text rounded-xl border p-3 font-mono text-sm leading-relaxed sm:min-h-[min(48dvh,18rem)] sm:p-4"
       onMouseUp={handleMouseUp}
       onTouchEnd={handleMouseUp}
     >
       {isEmpty ? (
-        <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground px-2">
+        <div className="text-muted-foreground flex min-h-[min(32dvh,12rem)] flex-col items-center justify-center gap-3 px-2 sm:min-h-[12rem]">
           <Mic2 className="h-10 w-10 opacity-30" />
           <p className="text-sm text-center text-balance">
             {isRecording
@@ -63,7 +63,7 @@ export function TranscriptPanel({
         <textarea
           value={transcript}
           onChange={(e) => onTranscriptChange(e.target.value)}
-          className="h-full w-full min-h-0 min-w-0 resize-none bg-transparent text-foreground outline-none break-words [overflow-wrap:anywhere]"
+          className="min-h-[min(50dvh,20rem)] w-full min-w-0 resize-none bg-transparent text-foreground outline-none break-words sm:min-h-[18rem] [overflow-wrap:anywhere]"
           spellCheck={false}
           placeholder="Edit transcript here..."
         />
