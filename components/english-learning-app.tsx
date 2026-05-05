@@ -48,7 +48,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
-import { getStorageConfig, saveStorageConfig, StorageConfig } from "@/lib/storage-config"
+import { getStorageConfig, saveStorageConfig, StorageConfig, localAsrModelShortLabel } from "@/lib/storage-config"
 import {
   localGetConversations,
   localCreateConversation,
@@ -132,13 +132,13 @@ export function EnglishLearningApp() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
   const isMobile = useIsMobile()
-  const [mobileMainTab, setMobileMainTab] = useState<"session" | "library">("session")
+  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "study">("capture")
 
   // Transcription hook
   const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, utterances, recordedAudioBlob, isRefining, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
-      whisperModel: storageConfig.whisperModel,
+      localAsrModel: storageConfig.localAsrModel,
     })
 
   useEffect(() => {
@@ -813,7 +813,7 @@ export function EnglishLearningApp() {
 
   const handleRefineTranscript = useCallback(async () => {
     try {
-      const refined = await refineTranscript("small")
+      const refined = await refineTranscript()
       if (refined) {
         toast.success("Transcript refined with higher-accuracy model")
       } else {
@@ -925,19 +925,19 @@ export function EnglishLearningApp() {
 
   const handleCreateGroup = useCallback(async (name: string) => {
     if (!isLocal) {
-      toast.info("Session grouping is currently stored locally.")
+      toast.info("Folders are saved in this browser only.")
     }
     const created = localCreateConversationGroup(name, [])
     setConversationGroups((prev) => [created, ...prev])
     setSelectedGroupId(created.id)
-    toast.success("Workspace created")
+    toast.success("Folder created")
   }, [isLocal])
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
     localDeleteConversationGroup(groupId)
     setConversationGroups((prev) => prev.filter((g) => g.id !== groupId))
     if (selectedGroupId === groupId) setSelectedGroupId(null)
-    toast.success("Group deleted")
+    toast.success("Folder deleted")
   }, [selectedGroupId])
 
   const handleArchiveGroup = useCallback(async (groupId: string) => {
@@ -945,14 +945,14 @@ export function EnglishLearningApp() {
     if (!updated) return
     setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
     if (selectedGroupId === groupId) setSelectedGroupId(null)
-    toast.success("Workspace archived")
+    toast.success("Folder archived")
   }, [selectedGroupId])
 
   const handleRestoreGroup = useCallback(async (groupId: string) => {
     const updated = localRestoreConversationGroup(groupId)
     if (!updated) return
     setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
-    toast.success("Workspace restored")
+    toast.success("Folder restored")
   }, [])
 
   const handleRenameGroup = useCallback(async (groupId: string, nextName: string) => {
@@ -960,11 +960,11 @@ export function EnglishLearningApp() {
     if (!name) return
     const updated = localUpdateConversationGroupName(groupId, name)
     if (!updated) {
-      toast.error("Failed to rename workspace")
+      toast.error("Failed to rename folder")
       return
     }
     setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
-    toast.success("Workspace name updated")
+    toast.success("Folder name updated")
   }, [])
 
   const handleSelectGroup = useCallback((groupId: string | null) => {
@@ -985,7 +985,7 @@ export function EnglishLearningApp() {
     const updated = localMoveConversationToGroup(conversationId, groupId)
     setConversationGroups(updated)
     setSelectedGroupId(groupId)
-    toast.success(groupId ? "Moved to group" : "Moved to unclassified")
+    toast.success(groupId ? "Moved to folder" : "Moved to inbox")
   }, [])
 
   const handleToggleEditTranscript = useCallback(async () => {
@@ -1565,6 +1565,7 @@ export function EnglishLearningApp() {
       translatingId={translatingId}
       onAddFrequentWord={handleAddFrequentWord}
       onExcludeTopWord={handleExcludeTopWord}
+      tutorTranscriptContext={`${transcript} ${interimTranscript}`.trim().slice(0, 12000)}
     />
   )
 
@@ -1580,8 +1581,8 @@ export function EnglishLearningApp() {
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <GraduationCap className="text-primary h-6 w-6 shrink-0" />
           <div className="min-w-0">
-            <h1 className="text-foreground truncate text-base font-bold leading-tight sm:text-lg">SurviveEngilsh</h1>
-            <p className="text-muted-foreground line-clamp-2 text-[11px] sm:text-xs">Real-time transcription + vocabulary builder</p>
+            <h1 className="text-foreground truncate text-base font-bold leading-tight sm:text-lg">SurviveEnglish</h1>
+            <p className="text-muted-foreground line-clamp-2 text-[11px] sm:text-xs">Capture · learn · review — in one flow</p>
           </div>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap">
@@ -1589,7 +1590,9 @@ export function EnglishLearningApp() {
             <div className="bg-muted text-muted-foreground hidden min-w-0 max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs sm:flex">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
               <span className="truncate">
-                {loadingProgress > 0 ? `Loading Whisper model ${loadingProgress}%` : "Downloading Whisper model..."}
+                {loadingProgress > 0
+                  ? `Loading ${localAsrModelShortLabel(storageConfig.localAsrModel)} ${loadingProgress}%`
+                  : `Downloading ${localAsrModelShortLabel(storageConfig.localAsrModel)}...`}
               </span>
             </div>
           )}
@@ -1618,7 +1621,7 @@ export function EnglishLearningApp() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="text-muted-foreground font-normal text-xs">Stats & storage</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-muted-foreground font-normal text-xs">Quick info</DropdownMenuLabel>
                 <DropdownMenuItem disabled className="text-xs">
                   <BookOpen className="mr-2 h-3.5 w-3.5" />
                   {vocabulary.length} words · {masteredCount} mastered
@@ -1670,32 +1673,32 @@ export function EnglishLearningApp() {
         {isMobile ? (
           <Tabs
             value={mobileMainTab}
-            onValueChange={(v) => setMobileMainTab(v as "session" | "library")}
-            className="flex min-h-0 flex-1 flex-col gap-0"
+            onValueChange={(v) => setMobileMainTab(v as "capture" | "study")}
+            className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
           >
             <TabsList className="border-border mx-3 mt-1 grid h-12 shrink-0 grid-cols-2 gap-1 rounded-2xl border bg-muted/60 p-1 ring-1 ring-border/50">
               <TabsTrigger
-                value="session"
+                value="capture"
                 className="data-[state=active]:bg-card gap-2 rounded-xl py-2.5 text-xs font-medium data-[state=active]:shadow-sm"
               >
                 <Mic className="h-4 w-4 opacity-80" />
-                Session
+                Transcribe
               </TabsTrigger>
               <TabsTrigger
-                value="library"
+                value="study"
                 className="data-[state=active]:bg-card gap-2 rounded-xl py-2.5 text-xs font-medium data-[state=active]:shadow-sm"
               >
                 <BookOpen className="h-4 w-4 opacity-80" />
-                Library
+                Study
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="session" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+            <TabsContent value="capture" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
               {renderTranscription(
                 "flex-1 min-h-0 border-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1"
               )}
             </TabsContent>
-            <TabsContent value="library" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-              <div className="flex min-h-0 flex-1 flex-col pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+            <TabsContent value="study" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
                 {renderLibrary(true)}
               </div>
             </TabsContent>
@@ -1726,7 +1729,7 @@ export function EnglishLearningApp() {
 
             {leftCollapsed && (
               <div className="border-border flex w-11 shrink-0 flex-col items-center border-r pt-3 sm:w-10">
-                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandLeftPanel} title="Expand transcription panel">
+                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandLeftPanel} title="Expand transcribe panel">
                   <PanelLeftOpen className="h-4 w-4" />
                 </Button>
               </div>
@@ -1738,7 +1741,7 @@ export function EnglishLearningApp() {
 
             {rightCollapsed && !isMobile && (
               <div className="border-border flex w-11 shrink-0 flex-col items-center border-l pt-3 sm:w-10">
-                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandRightPanel} title="Expand workspace panel">
+                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandRightPanel} title="Expand study panel">
                   <PanelRightOpen className="h-4 w-4" />
                 </Button>
               </div>

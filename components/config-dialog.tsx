@@ -14,7 +14,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getStorageConfig, saveStorageConfig, StorageConfig, StorageMode, TranslationProvider, WhisperModel } from "@/lib/storage-config"
+import {
+  getStorageConfig,
+  saveStorageConfig,
+  StorageConfig,
+  StorageMode,
+  TranslationProvider,
+  LOCAL_ASR_MODELS,
+  type LocalAsrModel,
+} from "@/lib/storage-config"
 import { Database, HardDrive, CheckCircle2, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -28,7 +36,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
   const [mode, setMode] = useState<StorageMode>("local")
   const [supabaseUrl, setSupabaseUrl] = useState("")
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("")
-  const [whisperModel, setWhisperModel] = useState<WhisperModel>("tiny")
+  const [localAsrModel, setLocalAsrModel] = useState<LocalAsrModel>("whisper-base")
   const [translationProviderRecent, setTranslationProviderRecent] = useState<TranslationProvider>("gemini")
   const [translationProviderAll, setTranslationProviderAll] = useState<TranslationProvider>("translate_api")
   const [topWordExcludes, setTopWordExcludes] = useState<string[]>([])
@@ -41,7 +49,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       setMode(cfg.mode)
       setSupabaseUrl(cfg.supabaseUrl)
       setSupabaseAnonKey(cfg.supabaseAnonKey)
-      setWhisperModel(cfg.whisperModel === "medium" ? "small" : (cfg.whisperModel ?? "tiny"))
+      setLocalAsrModel(cfg.localAsrModel ?? "whisper-base")
       setTranslationProviderRecent(cfg.translationProviderRecent ?? "gemini")
       setTranslationProviderAll(cfg.translationProviderAll ?? "translate_api")
       setTopWordExcludes(Array.isArray(cfg.topWordExcludes) ? cfg.topWordExcludes : [])
@@ -58,7 +66,7 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       mode,
       supabaseUrl,
       supabaseAnonKey,
-      whisperModel,
+      localAsrModel,
       translationProviderRecent,
       translationProviderAll,
       topWordExcludes,
@@ -184,19 +192,21 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
         )}
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Transcription model</Label>
-          <Select value={whisperModel} onValueChange={(value) => setWhisperModel(value as WhisperModel)}>
+          <Label className="text-xs">Transcription model (local, open source)</Label>
+          <Select value={localAsrModel} onValueChange={(value) => setLocalAsrModel(value as LocalAsrModel)}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="tiny">Whisper Tiny (faster)</SelectItem>
-              <SelectItem value="base">Whisper Base (more accurate)</SelectItem>
-              <SelectItem value="small">Whisper Small (higher quality, slower)</SelectItem>
+              {LOCAL_ASR_MODELS.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {localAsrSelectLabel(id)}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <p className="text-[11px] text-muted-foreground">
-            Bigger models improve accuracy but increase latency and memory usage.
+            Default is Whisper Base for usable accuracy on a laptop. If captions lag, try Tiny or Wav2Vec2 Base; for harder audio, try Distil or Whisper Small (slower, more RAM). Recording stop → refine uses a stronger pass when you need cleaner text.
           </p>
         </div>
 
@@ -276,6 +286,25 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       </DialogContent>
     </Dialog>
   )
+}
+
+function localAsrSelectLabel(id: LocalAsrModel): string {
+  switch (id) {
+    case "whisper-base":
+      return "Whisper Base (default — quality vs speed)"
+    case "whisper-tiny":
+      return "Whisper Tiny (fastest, lower quality)"
+    case "wav2vec2-base-960h":
+      return "Wav2Vec2 Base 960h (CTC, often quick)"
+    case "distil-whisper-small-en":
+      return "Distil-Whisper Small EN (slower, stronger)"
+    case "whisper-small":
+      return "Whisper Small (best Whisper, heavier)"
+    case "wav2vec2-large-xlsr-53-en":
+      return "Wav2Vec2 Large XLSR English (Meta CTC)"
+    default:
+      return id
+  }
 }
 
 // ── Mode card ────────────────────────────────────────────────
