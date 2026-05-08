@@ -3,92 +3,128 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ─── Light mode ──────────────────────────────────────────────────────────── */
 :root {
-  /* Blues as primary brand color for an academic/tech feel */
-  --background: oklch(0.98 0.005 240);
-  --foreground: oklch(0.15 0.02 240);
+  /* Surfaces */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.14 0.03 245);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.02 240);
+  --card-foreground: oklch(0.14 0.03 245);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.02 240);
-  --primary: oklch(0.52 0.2 255);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.94 0.01 240);
-  --secondary-foreground: oklch(0.3 0.04 240);
-  --muted: oklch(0.94 0.01 240);
-  --muted-foreground: oklch(0.52 0.02 240);
-  --accent: oklch(0.68 0.18 165);
-  --accent-foreground: oklch(0.15 0.02 165);
+  --popover-foreground: oklch(0.14 0.03 245);
+
+  /* Brand — cool blue, matching career app primary */
+  --primary: oklch(0.55 0.2 255);
+  --primary-foreground: oklch(0.98 0.005 235);
+
+  /* Secondary / Muted — light blue-gray */
+  --secondary: oklch(0.96 0.01 240);
+  --secondary-foreground: oklch(0.22 0.04 245);
+  --muted: oklch(0.96 0.01 240);
+  --muted-foreground: oklch(0.54 0.02 240);
+
+  /* Accent — same as secondary (neutral, like career app) */
+  --accent: oklch(0.96 0.01 240);
+  --accent-foreground: oklch(0.22 0.04 245);
+
+  /* Accent warm — lavender tint (career app 2026 Neo-minimal) */
+  --accent-warm: oklch(0.94 0.015 300);
+  --accent-warm-foreground: oklch(0.38 0.04 290);
+
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.88 0.01 240);
-  --input: oklch(0.88 0.01 240);
-  --ring: oklch(0.52 0.2 255);
-  --radius: 0.75rem;
-  /* Recording indicator */
+  --destructive-foreground: oklch(0.98 0.005 235);
+
+  --border: oklch(0.91 0.01 240);
+  --input: oklch(0.91 0.01 240);
+  --ring: oklch(0.55 0.2 255);
+  --radius: 0.5rem;
+
+  /* App-specific: recording indicator */
   --recording: oklch(0.62 0.22 25);
   --recording-foreground: oklch(0.98 0 0);
-  /* Korean badge */
+
+  /* App-specific: Korean badge */
   --korean: oklch(0.58 0.18 300);
   --korean-foreground: oklch(0.98 0 0);
-  --chart-1: oklch(0.52 0.2 255);
-  --chart-2: oklch(0.68 0.18 165);
+
+  /* Charts */
+  --chart-1: oklch(0.55 0.2 255);
+  --chart-2: oklch(0.62 0.18 165);
   --chart-3: oklch(0.62 0.22 25);
   --chart-4: oklch(0.58 0.18 300);
   --chart-5: oklch(0.7 0.15 90);
-  --sidebar: oklch(0.96 0.01 240);
-  --sidebar-foreground: oklch(0.15 0.02 240);
-  --sidebar-primary: oklch(0.52 0.2 255);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.94 0.01 240);
-  --sidebar-accent-foreground: oklch(0.3 0.04 240);
-  --sidebar-border: oklch(0.88 0.01 240);
-  --sidebar-ring: oklch(0.52 0.2 255);
+
+  /* Sidebar */
+  --sidebar: oklch(0.98 0.005 240);
+  --sidebar-foreground: oklch(0.14 0.03 245);
+  --sidebar-primary: oklch(0.55 0.2 255);
+  --sidebar-primary-foreground: oklch(0.98 0.005 235);
+  --sidebar-accent: oklch(0.96 0.01 240);
+  --sidebar-accent-foreground: oklch(0.22 0.04 245);
+  --sidebar-border: oklch(0.91 0.01 240);
+  --sidebar-ring: oklch(0.55 0.2 255);
 }
 
+/* ─── Dark mode ───────────────────────────────────────────────────────────── */
 .dark {
-  --background: oklch(0.13 0.02 240);
-  --foreground: oklch(0.95 0.01 240);
-  --card: oklch(0.17 0.02 240);
-  --card-foreground: oklch(0.95 0.01 240);
-  --popover: oklch(0.17 0.02 240);
-  --popover-foreground: oklch(0.95 0.01 240);
-  --primary: oklch(0.62 0.22 255);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.22 0.03 240);
-  --secondary-foreground: oklch(0.85 0.01 240);
-  --muted: oklch(0.22 0.03 240);
-  --muted-foreground: oklch(0.6 0.02 240);
-  --accent: oklch(0.6 0.18 165);
-  --accent-foreground: oklch(0.95 0 0);
-  --destructive: oklch(0.48 0.18 25);
-  --destructive-foreground: oklch(0.95 0 0);
-  --border: oklch(0.25 0.03 240);
-  --input: oklch(0.25 0.03 240);
-  --ring: oklch(0.62 0.22 255);
+  /* Surfaces — deep navy like career app (222.2 84% 4.9%) */
+  --background: oklch(0.14 0.03 245);
+  --foreground: oklch(0.98 0.005 235);
+  --card: oklch(0.14 0.03 245);
+  --card-foreground: oklch(0.98 0.005 235);
+  --popover: oklch(0.14 0.03 245);
+  --popover-foreground: oklch(0.98 0.005 235);
+
+  /* Brand — brighter blue in dark (217.2 91.2% 59.8%) */
+  --primary: oklch(0.65 0.22 255);
+  --primary-foreground: oklch(0.22 0.04 245);
+
+  /* Secondary / Muted — dark blue-gray (217.2 32.6% 17.5%) */
+  --secondary: oklch(0.23 0.03 245);
+  --secondary-foreground: oklch(0.98 0.005 235);
+  --muted: oklch(0.23 0.03 245);
+  --muted-foreground: oklch(0.65 0.02 240);
+
+  /* Accent */
+  --accent: oklch(0.23 0.03 245);
+  --accent-foreground: oklch(0.98 0.005 235);
+
+  /* Accent warm dark */
+  --accent-warm: oklch(0.22 0.03 290);
+  --accent-warm-foreground: oklch(0.89 0.02 300);
+
+  --destructive: oklch(0.4 0.16 27.325);
+  --destructive-foreground: oklch(0.98 0.005 235);
+
+  --border: oklch(0.23 0.03 245);
+  --input: oklch(0.23 0.03 245);
+  --ring: oklch(0.55 0.2 255);
+
   --recording: oklch(0.65 0.22 25);
   --recording-foreground: oklch(0.98 0 0);
   --korean: oklch(0.65 0.18 300);
   --korean-foreground: oklch(0.98 0 0);
-  --chart-1: oklch(0.62 0.22 255);
-  --chart-2: oklch(0.6 0.18 165);
+
+  --chart-1: oklch(0.65 0.22 255);
+  --chart-2: oklch(0.62 0.18 165);
   --chart-3: oklch(0.65 0.22 25);
   --chart-4: oklch(0.65 0.18 300);
   --chart-5: oklch(0.7 0.15 90);
-  --sidebar: oklch(0.17 0.02 240);
-  --sidebar-foreground: oklch(0.95 0.01 240);
-  --sidebar-primary: oklch(0.62 0.22 255);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.03 240);
-  --sidebar-accent-foreground: oklch(0.85 0.01 240);
-  --sidebar-border: oklch(0.25 0.03 240);
-  --sidebar-ring: oklch(0.62 0.22 255);
+
+  --sidebar: oklch(0.14 0.03 245);
+  --sidebar-foreground: oklch(0.98 0.005 235);
+  --sidebar-primary: oklch(0.65 0.22 255);
+  --sidebar-primary-foreground: oklch(0.98 0.005 235);
+  --sidebar-accent: oklch(0.23 0.03 245);
+  --sidebar-accent-foreground: oklch(0.98 0.005 235);
+  --sidebar-border: oklch(0.23 0.03 245);
+  --sidebar-ring: oklch(0.55 0.2 255);
 }
 
-
+/* ─── Tailwind v4 theme mapping ───────────────────────────────────────────── */
 @theme inline {
-  --font-sans: var(--font-sans), 'Inter', 'Inter Fallback', system-ui, sans-serif;
-  --font-mono: var(--font-mono), 'JetBrains Mono', 'JetBrains Mono Fallback', monospace;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -103,6 +139,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-warm: var(--accent-warm);
+  --color-accent-warm-foreground: var(--accent-warm-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -131,6 +169,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ─── Base styles ─────────────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -143,5 +182,90 @@
     min-height: 100%;
     min-height: 100dvh;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Keyboard focus — visible only for keyboard users */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-contrast: more) {
+    :focus-visible {
+      outline-width: 3px;
+      outline-offset: 3px;
+    }
+  }
+
+  /* Skip navigation link */
+  .skip-link {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    padding: 0.75rem 1rem;
+    background: var(--background);
+    color: var(--foreground);
+    border: 2px solid var(--ring);
+    border-radius: var(--radius);
+    margin: 0.5rem;
+    font-weight: 500;
+    text-decoration: none;
+    transform: translateY(-120%);
+    transition: transform 0.2s;
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+
+  /* Improve tap response inside open dialogs/sheets */
+  [data-state="open"] button,
+  [data-state="open"] [role="button"],
+  [data-state="open"] a[href] {
+    touch-action: manipulation;
+  }
+}
+
+/* ─── Utilities ───────────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Subtle paper texture overlay (from career app) */
+  .texture-paper {
+    position: relative;
+  }
+  .texture-paper::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 0;
+  }
+  .dark .texture-paper::before {
+    opacity: 0.04;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px color-mix(in oklch, var(--primary) 50%, transparent),
+                  0 0 40px color-mix(in oklch, var(--primary) 30%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 30px color-mix(in oklch, var(--primary) 70%, transparent),
+                  0 0 60px color-mix(in oklch, var(--primary) 50%, transparent);
+    }
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes character-idle {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%       { transform: translateY(-6px) scale(1.02); }
+  }
+  .animate-character-idle {
+    animation: character-idle 2.5s ease-in-out infinite;
   }
 }

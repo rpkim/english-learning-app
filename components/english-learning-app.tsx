@@ -31,7 +31,6 @@ import {
   Loader2,
   AlertCircle,
   Settings2,
-  Database,
   HardDrive,
   Monitor,
   Mic,
@@ -77,7 +76,6 @@ export function EnglishLearningApp() {
   // Storage config
   const [storageConfig, setStorageConfig] = useState<StorageConfig>(() => getStorageConfig())
   const [showConfig, setShowConfig] = useState(false)
-  const isLocal = storageConfig.mode === "local"
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [isUnlocked, setIsUnlocked] = useState(false)
   const [unlockPassword, setUnlockPassword] = useState("")
@@ -90,7 +88,7 @@ export function EnglishLearningApp() {
   const [isExtracting, setIsExtracting] = useState(false)
   const [isCurrentTranscriptSaved, setIsCurrentTranscriptSaved] = useState(false)
   const [showStartSourceDialog, setShowStartSourceDialog] = useState(false)
-  const [startViewMode, setStartViewMode] = useState<"compact" | "full">("full")
+
   const [isEditingTranscript, setIsEditingTranscript] = useState(false)
   const [isTranslatingRecent, setIsTranslatingRecent] = useState(false)
   const [isTranslatingAllText, setIsTranslatingAllText] = useState(false)
@@ -200,13 +198,13 @@ export function EnglishLearningApp() {
     }
   }, [unlockPassword])
 
-  // Reload data when storage mode changes
+  // Load initial data
   useEffect(() => {
-    fetchConversations()
-    fetchVocabulary()
+    setConversations(localGetConversations())
     setConversationGroups(localGetConversationGroups())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageConfig.mode])
+    setVocabulary(localGetVocabulary())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -218,31 +216,9 @@ export function EnglishLearningApp() {
     } catch {}
   }, [])
 
-  async function fetchConversations() {
-    if (isLocal) {
-      setConversations(localGetConversations())
-      setConversationGroups(localGetConversationGroups())
-      return
-    }
-    const res = await fetch("/api/conversations")
-    if (res.ok) {
-      const data = await res.json()
-      setConversations(data)
-    }
-  }
-
-  async function fetchVocabulary(conversationId?: string) {
+  function fetchVocabulary(conversationId?: string) {
     setIsLoadingVocab(true)
-    if (isLocal) {
-      setVocabulary(localGetVocabulary(conversationId))
-      setIsLoadingVocab(false)
-      return
-    }
-    const url = conversationId ? `/api/vocabulary?conversation_id=${conversationId}` : "/api/vocabulary"
-    const res = await fetch(url)
-    if (res.ok) {
-      setVocabulary(await res.json())
-    }
+    setVocabulary(localGetVocabulary(conversationId))
     setIsLoadingVocab(false)
   }
 
@@ -290,19 +266,9 @@ export function EnglishLearningApp() {
     if (isReextract && reuseConversationId) {
       setIsExtracting(true)
       try {
-        if (isLocal) {
-          const updated = localUpdateConversationTranscript(reuseConversationId, transcript)
-          if (!updated) throw new Error("Failed to update session")
-          setConversations(localGetConversations())
-        } else {
-          const patchRes = await fetch(`/api/conversations/${reuseConversationId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ transcript }),
-          })
-          if (!patchRes.ok) throw new Error("Failed to update session")
-          await fetchConversations()
-        }
+        const updated = localUpdateConversationTranscript(reuseConversationId, transcript)
+        if (!updated) throw new Error("Failed to update session")
+        setConversations(localGetConversations())
 
         const extractRes = await fetch("/api/extract", {
           method: "POST",
@@ -334,36 +300,17 @@ export function EnglishLearningApp() {
               : "All extracted items are already in this session. Try editing the transcript, then extract again."
           )
         } else {
-          let saved: VocabularyItem[]
-          if (isLocal) {
-            saved = freshItems.map((item) =>
-              localCreateVocabularyItem({
-                conversation_id: reuseConversationId,
-                word: item.word,
-                type: normalizeVocabType(item.type),
-                definition: item.definition,
-                example_sentence: item.example_sentence,
-                context: item.context,
-                korean_translation: null,
-              })
-            )
-          } else {
-            const savePromises = freshItems.map((item) =>
-              fetch("/api/vocabulary", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  conversation_id: reuseConversationId,
-                  word: item.word,
-                  type: normalizeVocabType(item.type),
-                  definition: item.definition,
-                  example_sentence: item.example_sentence,
-                  context: item.context,
-                }),
-              }).then((r) => r.json())
-            )
-            saved = await Promise.all(savePromises)
-          }
+          const saved = freshItems.map((item) =>
+            localCreateVocabularyItem({
+              conversation_id: reuseConversationId,
+              word: item.word,
+              type: normalizeVocabType(item.type),
+              definition: item.definition,
+              example_sentence: item.example_sentence,
+              context: item.context,
+              korean_translation: null,
+            })
+          )
           setVocabulary((prev) => [...saved, ...prev])
           toast.success(`Added ${saved.length} new vocabulary item${saved.length !== 1 ? "s" : ""}!`)
         }
@@ -386,21 +333,9 @@ export function EnglishLearningApp() {
     try {
       const sessionTitle = `Session — ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
 
-      // 1) Save conversation (local or remote)
-      let savedConv: Conversation
-      if (isLocal) {
-        savedConv = localCreateConversation(sessionTitle, transcript, duration)
-        setConversations((prev) => [savedConv, ...prev])
-      } else {
-        const saveRes = await fetch("/api/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: sessionTitle, transcript, duration_seconds: duration }),
-        })
-        if (!saveRes.ok) throw new Error("Failed to save conversation")
-        savedConv = await saveRes.json()
-        await fetchConversations()
-      }
+      // 1) Save conversation
+      const savedConv = localCreateConversation(sessionTitle, transcript, duration)
+      setConversations((prev) => [savedConv, ...prev])
       setCurrentConversationId(savedConv.id)
       toast.success("Session saved!")
 
@@ -426,37 +361,18 @@ export function EnglishLearningApp() {
       if (items.length === 0) {
         toast.info("No new vocabulary items found in this transcript.")
       } else {
-        // 3) Save each extracted item (local or remote)
-        let saved: VocabularyItem[]
-        if (isLocal) {
-          saved = items.map((item) =>
-            localCreateVocabularyItem({
-              conversation_id: savedConv.id,
-              word: item.word,
-              type: normalizeVocabType(item.type),
-              definition: item.definition,
-              example_sentence: item.example_sentence,
-              context: item.context,
-              korean_translation: null,
-            })
-          )
-        } else {
-          const savePromises = items.map((item) =>
-            fetch("/api/vocabulary", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                conversation_id: savedConv.id,
-                word: item.word,
-                type: normalizeVocabType(item.type),
-                definition: item.definition,
-                example_sentence: item.example_sentence,
-                context: item.context,
-              }),
-            }).then((r) => r.json())
-          )
-          saved = await Promise.all(savePromises)
-        }
+        // 3) Save each extracted item
+        const saved = items.map((item) =>
+          localCreateVocabularyItem({
+            conversation_id: savedConv.id,
+            word: item.word,
+            type: normalizeVocabType(item.type),
+            definition: item.definition,
+            example_sentence: item.example_sentence,
+            context: item.context,
+            korean_translation: null,
+          })
+        )
         setVocabulary((prev) => [...saved, ...prev])
         toast.success(`Extracted ${items.length} vocabulary item${items.length !== 1 ? "s" : ""}!`)
       }
@@ -469,7 +385,7 @@ export function EnglishLearningApp() {
       setIsExtracting(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transcript, duration, isLocal, isCurrentTranscriptSaved, currentConversationId, vocabulary])
+  }, [transcript, duration, isCurrentTranscriptSaved, currentConversationId, vocabulary])
 
   const handleExtractOnly = useCallback(async () => {
     const text = transcript.trim()
@@ -509,36 +425,17 @@ export function EnglishLearningApp() {
         )
         return
       }
-      let saved: VocabularyItem[]
-      if (isLocal) {
-        saved = freshItems.map((item) =>
-          localCreateVocabularyItem({
-            conversation_id: currentConversationId,
-            word: item.word,
-            type: normalizeVocabType(item.type),
-            definition: item.definition,
-            example_sentence: item.example_sentence,
-            context: item.context,
-            korean_translation: null,
-          })
-        )
-      } else {
-        const savePromises = freshItems.map((item) =>
-          fetch("/api/vocabulary", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              conversation_id: currentConversationId,
-              word: item.word,
-              type: normalizeVocabType(item.type),
-              definition: item.definition,
-              example_sentence: item.example_sentence,
-              context: item.context,
-            }),
-          }).then((r) => r.json())
-        )
-        saved = await Promise.all(savePromises)
-      }
+      const saved = freshItems.map((item) =>
+        localCreateVocabularyItem({
+          conversation_id: currentConversationId,
+          word: item.word,
+          type: normalizeVocabType(item.type),
+          definition: item.definition,
+          example_sentence: item.example_sentence,
+          context: item.context,
+          korean_translation: null,
+        })
+      )
       setVocabulary((prev) => [...saved, ...prev])
       toast.success(`Added ${saved.length} new vocabulary item${saved.length !== 1 ? "s" : ""}!`)
     } catch (err: unknown) {
@@ -547,7 +444,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsExtracting(false)
     }
-  }, [transcript, currentConversationId, isLocal, vocabulary])
+  }, [transcript, currentConversationId, vocabulary])
 
   const applyTranscriptImport = useCallback(
     (raw: string) => {
@@ -599,30 +496,15 @@ export function EnglishLearningApp() {
     async (item: { word: string; type: string; definition: string; context: string }) => {
       setIsSubmittingManual(true)
       try {
-        let saved: VocabularyItem
-        if (isLocal) {
-          saved = localCreateVocabularyItem({
-            conversation_id: currentConversationId,
-            word: item.word,
-            type: normalizeVocabType(item.type as VocabularyItem["type"]),
-            definition: item.definition,
-            example_sentence: null,
-            context: item.context,
-            korean_translation: null,
-          })
-        } else {
-          const res = await fetch("/api/vocabulary", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              conversation_id: currentConversationId,
-              ...item,
-              type: normalizeVocabType(item.type as VocabularyItem["type"]),
-            }),
-          })
-          if (!res.ok) throw new Error("Failed to add item")
-          saved = await res.json()
-        }
+      const saved = localCreateVocabularyItem({
+        conversation_id: currentConversationId,
+        word: item.word,
+        type: normalizeVocabType(item.type as VocabularyItem["type"]),
+        definition: item.definition,
+        example_sentence: null,
+        context: item.context,
+        korean_translation: null,
+      })
         setVocabulary((prev) => [saved, ...prev])
         setShowManualAdd(false)
         setManualWord("")
@@ -635,41 +517,21 @@ export function EnglishLearningApp() {
         setIsSubmittingManual(false)
       }
     },
-    [currentConversationId, isLocal]
+    [currentConversationId]
   )
 
   // Delete vocabulary item
-  const handleDelete = useCallback(async (id: string) => {
-    if (isLocal) {
-      localDeleteVocabularyItem(id)
-      setVocabulary((prev) => prev.filter((v) => v.id !== id))
-      toast.success("Item removed")
-      return
-    }
-    const res = await fetch(`/api/vocabulary/${id}`, { method: "DELETE" })
-    if (res.ok) {
-      setVocabulary((prev) => prev.filter((v) => v.id !== id))
-      toast.success("Item removed")
-    }
-  }, [isLocal])
+  const handleDelete = useCallback((id: string) => {
+    localDeleteVocabularyItem(id)
+    setVocabulary((prev) => prev.filter((v) => v.id !== id))
+    toast.success("Item removed")
+  }, [])
 
   // Toggle mastered
-  const handleToggleMastered = useCallback(async (id: string, current: boolean) => {
-    if (isLocal) {
-      const updated = localUpdateVocabularyItem(id, { is_mastered: !current })
-      if (updated) setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
-      return
-    }
-    const res = await fetch(`/api/vocabulary/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_mastered: !current }),
-    })
-    if (res.ok) {
-      const updated: VocabularyItem = await res.json()
-      setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
-    }
-  }, [isLocal])
+  const handleToggleMastered = useCallback((id: string, current: boolean) => {
+    const updated = localUpdateVocabularyItem(id, { is_mastered: !current })
+    if (updated) setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
+  }, [])
 
   // Translate to Korean via Gemini
   const handleTranslate = useCallback(async (item: VocabularyItem) => {
@@ -691,23 +553,10 @@ export function EnglishLearningApp() {
       const data = await res.json()
       const koreanTranslation: string = data.korean_translation
 
-      if (isLocal) {
-        const updated = localUpdateVocabularyItem(item.id, { korean_translation: koreanTranslation })
-        if (updated) {
-          setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
-          toast.success(`Korean translation added for "${item.word}"`)
-        }
-      } else {
-        const patchRes = await fetch(`/api/vocabulary/${item.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ korean_translation: koreanTranslation }),
-        })
-        if (patchRes.ok) {
-          const updated: VocabularyItem = await patchRes.json()
-          setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
-          toast.success(`Korean translation added for "${item.word}"`)
-        }
+      const updated = localUpdateVocabularyItem(item.id, { korean_translation: koreanTranslation })
+      if (updated) {
+        setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
+        toast.success(`Korean translation added for "${item.word}"`)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
@@ -715,7 +564,7 @@ export function EnglishLearningApp() {
     } finally {
       setTranslatingId(null)
     }
-  }, [isLocal, storageConfig.translationProviderAll])
+  }, [storageConfig.translationProviderAll])
 
   const handleTranslateRecent = useCallback(async () => {
     const input = recentSnippet || extractRecentTail(`${transcript} ${interimTranscript}`.trim(), 1)
@@ -845,13 +694,9 @@ export function EnglishLearningApp() {
     setTranscript(conv.transcript)
     setCurrentConversationId(conv.id)
     setIsCurrentTranscriptSaved(true)
-    if (isLocal) {
-      setVocabulary(localGetVocabulary(conv.id))
-    } else {
-      await fetchVocabulary(conv.id)
-    }
+    setVocabulary(localGetVocabulary(conv.id))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setTranscript, isLocal])
+  }, [setTranscript])
 
   const activeSpeakerKey = selectedConversationId ?? currentConversationId ?? "__unsaved__"
   const activeSpeakerAssignments = speakerAssignmentsByConversation[activeSpeakerKey] ?? {}
@@ -884,68 +729,38 @@ export function EnglishLearningApp() {
     if (!title) return
 
     try {
-      if (isLocal) {
-        const updated = localUpdateConversationTitle(conv.id, title)
-        if (!updated) throw new Error("Failed to rename session")
-        setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
-      } else {
-        const res = await fetch(`/api/conversations/${conv.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title }),
-        })
-        if (!res.ok) throw new Error("Failed to rename session")
-        const updated: Conversation = await res.json()
-        setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
-      }
-
+      const updated = localUpdateConversationTitle(conv.id, title)
+      if (!updated) throw new Error("Failed to rename session")
+      setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
       toast.success("Session title updated")
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)
     }
-  }, [isLocal])
+  }, [])
 
-  const handleDeleteConversation = useCallback(async (conv: Conversation) => {
-    try {
-      if (isLocal) {
-        localDeleteConversation(conv.id)
-        setConversationGroups(localGetConversationGroups())
-      } else {
-        const res = await fetch(`/api/conversations/${conv.id}`, { method: "DELETE" })
-        if (!res.ok) throw new Error("Failed to delete session")
-      }
+  const handleDeleteConversation = useCallback((conv: Conversation) => {
+    localDeleteConversation(conv.id)
+    setConversationGroups(localGetConversationGroups())
+    setConversations((prev) => prev.filter((c) => c.id !== conv.id))
+    setVocabulary((prev) => prev.filter((v) => v.conversation_id !== conv.id))
 
-      setConversations((prev) => prev.filter((c) => c.id !== conv.id))
-      setVocabulary((prev) => prev.filter((v) => v.conversation_id !== conv.id))
-
-      if (selectedConversationId === conv.id) {
-        setSelectedConversationId(null)
-        setCurrentConversationId(null)
-        setTranscript("")
-        if (isLocal) {
-          setVocabulary(localGetVocabulary())
-        } else {
-          void fetchVocabulary()
-        }
-      }
-
-      toast.success("Session deleted")
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error"
-      toast.error(msg)
+    if (selectedConversationId === conv.id) {
+      setSelectedConversationId(null)
+      setCurrentConversationId(null)
+      setTranscript("")
+      setVocabulary(localGetVocabulary())
     }
-  }, [isLocal, selectedConversationId, setTranscript])
 
-  const handleCreateGroup = useCallback(async (name: string) => {
-    if (!isLocal) {
-      toast.info("Folders are saved in this browser only.")
-    }
+    toast.success("Session deleted")
+  }, [selectedConversationId, setTranscript])
+
+  const handleCreateGroup = useCallback((name: string) => {
     const created = localCreateConversationGroup(name, [])
     setConversationGroups((prev) => [created, ...prev])
     setSelectedGroupId(created.id)
     toast.success("Folder created")
-  }, [isLocal])
+  }, [])
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
     localDeleteConversationGroup(groupId)
@@ -987,13 +802,8 @@ export function EnglishLearningApp() {
     if (groupId) {
       setCurrentConversationId(null)
     }
-    if (isLocal) {
-      setVocabulary(localGetVocabulary())
-    } else {
-      void fetchVocabulary()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocal])
+    setVocabulary(localGetVocabulary())
+  }, [])
 
   const handleMoveConversationToGroup = useCallback((conversationId: string, groupId: string | null) => {
     const updated = localMoveConversationToGroup(conversationId, groupId)
@@ -1016,19 +826,8 @@ export function EnglishLearningApp() {
     }
 
     try {
-      if (isLocal) {
-        const updated = localUpdateConversationTranscript(targetConversationId, transcript)
-        if (updated) {
-          setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-        }
-      } else {
-        const res = await fetch(`/api/conversations/${targetConversationId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript }),
-        })
-        if (!res.ok) throw new Error("Failed to save edited transcript")
-        const updated: Conversation = await res.json()
+      const updated = localUpdateConversationTranscript(targetConversationId, transcript)
+      if (updated) {
         setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       }
       toast.success("Transcript updated")
@@ -1038,7 +837,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsEditingTranscript(false)
     }
-  }, [isEditingTranscript, selectedConversationId, currentConversationId, isLocal, transcript])
+  }, [isEditingTranscript, selectedConversationId, currentConversationId, transcript])
 
   const activeGroupConversationIds = useMemo(() => {
     if (!selectedGroupId || selectedGroupId === "__ungrouped__") return null
@@ -1099,20 +898,8 @@ export function EnglishLearningApp() {
         return
       }
 
-      if (isLocal) {
-        for (const id of translatedIds) {
-          localUpdateVocabularyItem(id, { korean_translation: translations[id] })
-        }
-      } else {
-        await Promise.all(
-          translatedIds.map((id) =>
-            fetch(`/api/vocabulary/${id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ korean_translation: translations[id] }),
-            })
-          )
-        )
+      for (const id of translatedIds) {
+        localUpdateVocabularyItem(id, { korean_translation: translations[id] })
       }
 
       setVocabulary((prev) =>
@@ -1129,7 +916,7 @@ export function EnglishLearningApp() {
     } finally {
       setIsBatchTranslating(false)
     }
-  }, [scopedVocabulary, isLocal, storageConfig.translationProviderAll])
+  }, [scopedVocabulary, storageConfig.translationProviderAll])
 
   const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
   const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
@@ -1212,41 +999,23 @@ export function EnglishLearningApp() {
       return
     }
     try {
-      let saved: VocabularyItem
       const targetConversationId = selectedConversationId ?? null
-      if (isLocal) {
-        saved = localCreateVocabularyItem({
-          conversation_id: targetConversationId,
-          word,
-          type: "word",
-          definition: "Frequent word from selected sessions.",
-          example_sentence: null,
-          context: null,
-          korean_translation: null,
-        })
-      } else {
-        const res = await fetch("/api/vocabulary", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: targetConversationId,
-            word,
-            type: "word",
-            definition: "Frequent word from selected sessions.",
-            example_sentence: null,
-            context: null,
-          }),
-        })
-        if (!res.ok) throw new Error("Failed to add word")
-        saved = await res.json()
-      }
+      const saved = localCreateVocabularyItem({
+        conversation_id: targetConversationId,
+        word,
+        type: "word",
+        definition: "Frequent word from selected sessions.",
+        example_sentence: null,
+        context: null,
+        korean_translation: null,
+      })
       setVocabulary((prev) => [saved, ...prev])
       toast.success(`"${word}" added to vocabulary`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)
     }
-  }, [vocabulary, isLocal, selectedConversationId])
+  }, [vocabulary, selectedConversationId])
 
   const handleExportCsv = useCallback(() => {
     if (filteredVocabulary.length === 0) {
@@ -1333,25 +1102,15 @@ export function EnglishLearningApp() {
 
   const handleStartWithSource = useCallback(async (source: AudioInputSource) => {
     setShowStartSourceDialog(false)
-    if (startViewMode === "compact") {
-      setDesktopViewMode("compact")
-      setRightCollapsed(true)
-      setLeftCollapsed(false)
-      setLeftPanelWidthPct(68)
-      if (typeof window !== "undefined") {
-        await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("compact")
-      }
-    } else {
-      setDesktopViewMode("full")
-      setRightCollapsed(false)
-      setLeftCollapsed(false)
-      setLeftPanelWidthPct(58)
-      if (typeof window !== "undefined") {
-        await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("full")
-      }
+    setDesktopViewMode("full")
+    setRightCollapsed(false)
+    setLeftCollapsed(false)
+    setLeftPanelWidthPct(58)
+    if (typeof window !== "undefined") {
+      await (window as Window & { desktop?: { setViewMode?: (mode: "compact" | "full") => Promise<boolean> } }).desktop?.setViewMode?.("full")
     }
     await start(source)
-  }, [start, startViewMode])
+  }, [start])
 
   const collapseLeftPanel = useCallback(() => {
     setLeftCollapsed(true)
@@ -1574,7 +1333,7 @@ export function EnglishLearningApp() {
       masteredCount={masteredCount}
       onShowAllVocabulary={() => {
         setSelectedConversationId(null)
-        void fetchVocabulary()
+        setVocabulary(localGetVocabulary())
       }}
       onExportCsv={handleExportCsv}
       onExportPdf={handleExportPdf}
@@ -1666,15 +1425,10 @@ export function EnglishLearningApp() {
           {/* Storage badge (desktop) */}
           <Badge
             variant="outline"
-            className={cn(
-              "hidden gap-1 text-xs sm:flex h-6 cursor-default select-none",
-              isLocal
-                ? "text-muted-foreground border-border/60 bg-transparent"
-                : "text-primary border-primary/30 bg-primary/5"
-            )}
+            className="hidden gap-1 text-xs sm:flex h-6 cursor-default select-none text-muted-foreground border-border/60 bg-transparent"
           >
-            {isLocal ? <HardDrive className="h-3 w-3" /> : <Database className="h-3 w-3" />}
-            {isLocal ? "Local" : "Cloud"}
+            <HardDrive className="h-3 w-3" />
+            Local
           </Badge>
 
           {/* Mobile menu */}
@@ -1692,8 +1446,8 @@ export function EnglishLearningApp() {
                   {vocabulary.length} words · {masteredCount} mastered
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled className="text-xs">
-                  {isLocal ? <HardDrive className="mr-2 h-3.5 w-3.5" /> : <Database className="mr-2 h-3.5 w-3.5" />}
-                  {isLocal ? "Local storage" : "Cloud (Supabase)"}
+                  <HardDrive className="mr-2 h-3.5 w-3.5" />
+                  Local storage
                 </DropdownMenuItem>
                 {status === "loading_model" && (
                   <DropdownMenuItem disabled className="text-xs">
@@ -1917,7 +1671,7 @@ export function EnglishLearningApp() {
         onOpenChange={setShowConfig}
         onSave={(cfg) => {
           setStorageConfig(cfg)
-          toast.success(`Storage switched to ${cfg.mode === "local" ? "Local (browser)" : "Supabase"}`)
+          toast.success("Settings saved")
         }}
       />
 
@@ -1982,27 +1736,6 @@ export function EnglishLearningApp() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-2">
-            <div className="mb-1">
-              <p className="text-xs text-muted-foreground mb-1">View mode on start</p>
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={startViewMode === "compact" ? "secondary" : "outline"}
-                  onClick={() => setStartViewMode("compact")}
-                >
-                  Compact
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={startViewMode === "full" ? "secondary" : "outline"}
-                  onClick={() => setStartViewMode("full")}
-                >
-                  Full
-                </Button>
-              </div>
-            </div>
             <Button
               type="button"
               variant="outline"
