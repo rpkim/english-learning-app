@@ -1,4 +1,3 @@
-export type StorageMode = "supabase" | "local"
 export type TranslationProvider = "gemini" | "translate_api"
 
 /** Open-source ASR models runnable in-browser via Transformers.js (ONNX). */
@@ -37,9 +36,6 @@ export function localAsrModelShortLabel(model: LocalAsrModel): string {
 }
 
 export interface StorageConfig {
-  mode: StorageMode
-  supabaseUrl: string
-  supabaseAnonKey: string
   localAsrModel: LocalAsrModel
   translationProviderRecent: TranslationProvider
   translationProviderAll: TranslationProvider
@@ -47,13 +43,6 @@ export interface StorageConfig {
 }
 
 const CONFIG_KEY = "englishlens_storage_config"
-
-function hasBuiltInSupabaseEnv() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  )
-}
 
 function migrateToLocalAsrModel(raw: Record<string, unknown>): LocalAsrModel {
   const direct = raw.localAsrModel
@@ -68,9 +57,6 @@ function migrateToLocalAsrModel(raw: Record<string, unknown>): LocalAsrModel {
 }
 
 const DEFAULT_CONFIG: StorageConfig = {
-  mode: "local",
-  supabaseUrl: "",
-  supabaseAnonKey: "",
   /** Whisper Base: stronger than Tiny, lighter than Small — default balance for browser CPU. */
   localAsrModel: "whisper-base",
   translationProviderRecent: "gemini",
@@ -87,24 +73,12 @@ export function getStorageConfig(): StorageConfig {
       translationProvider?: TranslationProvider
       whisperModel?: string
     }
-    let parsed: StorageConfig = {
-      mode: parsedRaw.mode,
-      supabaseUrl: parsedRaw.supabaseUrl,
-      supabaseAnonKey: parsedRaw.supabaseAnonKey,
+    return {
+      localAsrModel: migrateToLocalAsrModel(parsedRaw as unknown as Record<string, unknown>),
       translationProviderRecent: parsedRaw.translationProviderRecent ?? parsedRaw.translationProvider ?? "gemini",
       translationProviderAll: parsedRaw.translationProviderAll ?? parsedRaw.translationProvider ?? "translate_api",
-      localAsrModel: migrateToLocalAsrModel(parsedRaw as unknown as Record<string, unknown>),
       topWordExcludes: Array.isArray(parsedRaw.topWordExcludes) ? parsedRaw.topWordExcludes : [],
     }
-
-    // If Supabase mode was saved but no built-in env exists and no custom credentials
-    // are set, force local mode to avoid API 500s on first load.
-    const hasCustomSupabaseCreds = Boolean(parsed.supabaseUrl && parsed.supabaseAnonKey)
-    if (parsed.mode === "supabase" && !hasBuiltInSupabaseEnv() && !hasCustomSupabaseCreds) {
-      parsed = { ...parsed, mode: "local" }
-    }
-
-    return parsed
   } catch {
     return DEFAULT_CONFIG
   }
@@ -112,14 +86,5 @@ export function getStorageConfig(): StorageConfig {
 
 export function saveStorageConfig(config: StorageConfig): void {
   if (typeof window === "undefined") return
-  const payload: StorageConfig = {
-    mode: config.mode,
-    supabaseUrl: config.supabaseUrl,
-    supabaseAnonKey: config.supabaseAnonKey,
-    localAsrModel: config.localAsrModel,
-    translationProviderRecent: config.translationProviderRecent,
-    translationProviderAll: config.translationProviderAll,
-    topWordExcludes: config.topWordExcludes ?? [],
-  }
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(payload))
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config))
 }
