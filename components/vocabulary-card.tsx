@@ -4,20 +4,23 @@ import { useState } from "react"
 import { VocabularyItem } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle, Sparkles, GitBranch, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TYPE_COLORS: Record<string, string> = {
   word: "bg-primary/10 text-primary border-primary/20",
   idiom: "bg-accent/10 text-accent-foreground border-accent/20",
-  slang: "bg-orange-500/10 text-orange-700 border-orange-300",
+  slang: "bg-orange-500/10 text-orange-600 border-orange-300 dark:text-orange-400 dark:border-orange-600/40",
+  phrasal_verb: "bg-accent/10 text-accent-foreground border-accent/20",
+  expression: "bg-purple-500/10 text-purple-600 border-purple-200 dark:text-purple-400 dark:border-purple-600/40",
 }
 
 const TYPE_LABELS: Record<string, string> = {
   word: "Word",
   idiom: "Idiom",
   slang: "Slang",
+  phrasal_verb: "Phrasal verb",
+  expression: "Expression",
 }
 
 interface VocabularyCardProps {
@@ -31,13 +34,10 @@ interface VocabularyCardProps {
 function getKoreanTranslationText(raw: unknown): string {
   if (typeof raw === "string") return raw
   if (!raw || typeof raw !== "object") return ""
-
   const translationObj = raw as Record<string, unknown>
   if (typeof translationObj.korean_translation === "string") return translationObj.korean_translation
   if (typeof translationObj.meaning === "string") return translationObj.meaning
-
-  const usage = typeof translationObj.usage === "string" ? translationObj.usage : ""
-  return usage
+  return typeof translationObj.usage === "string" ? translationObj.usage : ""
 }
 
 export function VocabularyCard({
@@ -79,7 +79,9 @@ export function VocabularyCard({
         return
       }
       if (mode === "examples") {
-        const ex = Array.isArray(data?.extra_examples) ? data.extra_examples.map((x: unknown) => String(x ?? "").trim()).filter(Boolean) : []
+        const ex = Array.isArray(data?.extra_examples)
+          ? data.extra_examples.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
+          : []
         setExtraExamples(ex.length ? ex : [])
       } else {
         setEtymology(typeof data?.etymology === "string" ? data.etymology : "")
@@ -94,158 +96,183 @@ export function VocabularyCard({
   }
 
   return (
-    <Card
+    <div
       className={cn(
-        "transition-all duration-200 border rounded-lg py-1 gap-0",
-        item.is_mastered && "opacity-60"
+        "group relative rounded-xl border border-border bg-card transition-all duration-150",
+        "hover:border-border/80 hover:shadow-sm",
+        item.is_mastered && "opacity-55"
       )}
     >
-      <CardHeader className="py-0 px-2 overflow-hidden">
-        <div className="flex items-start justify-between gap-2 min-w-0">
-          <div className="flex flex-col gap-0.5 flex-1 min-w-0 overflow-hidden">
-            <div className="flex items-center gap-1 flex-wrap min-w-0">
-            <span className="font-semibold text-foreground text-sm leading-snug break-words [overflow-wrap:anywhere]">
+      {/* Card header */}
+      <div className="flex items-start gap-2 px-3 py-2.5">
+        {/* Left: word + badges */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="text-sm font-semibold leading-snug text-foreground wrap-anywhere">
               {item.word}
             </span>
             <Badge
               variant="outline"
-              className={cn("text-xs h-4 px-1.5 shrink-0", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}
+              className={cn("h-5 shrink-0 px-1.5 text-[10px] font-medium", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}
             >
               {TYPE_LABELS[item.type] ?? item.type}
             </Badge>
-            </div>
-            {koreanTranslationText && (
-              <Badge className="text-xs min-h-4 h-auto py-0.5 px-1.5 max-w-full min-w-0 self-start bg-korean text-korean-foreground border-0 break-words [overflow-wrap:anywhere] whitespace-normal text-left leading-snug">
-                {koreanTranslationText}
-              </Badge>
-            )}
           </div>
-          <div className="flex items-center gap-0.5 shrink-0 self-start sticky top-0 bg-card/95 backdrop-blur-sm rounded-sm">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 sm:h-5 sm:w-5"
-              onClick={() => onToggleMastered(item.id, item.is_mastered)}
-              title={item.is_mastered ? "Mark as not mastered" : "Mark as mastered"}
-            >
-              {item.is_mastered ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-accent" />
-              ) : (
-                <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </Button>
-            {!koreanTranslationText && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 sm:h-5 sm:w-5"
-                onClick={() => onTranslate(item)}
-                disabled={isTranslating}
-                title="Translate to Korean"
-              >
-                <Globe className={cn("h-3.5 w-3.5 text-muted-foreground", isTranslating && "animate-pulse")} />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 sm:h-5 sm:w-5"
-              onClick={() => setExpanded(!expanded)}
-              title="Toggle details"
-            >
-              {expanded ? (
-                <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 sm:h-5 sm:w-5"
-              onClick={() => onDelete(item.id)}
-              title="Delete"
-            >
-              <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-
-      {expanded && (
-        <CardContent className="px-1.5 pb-0 pt-0 space-y-0.5 border-t border-border mt-0">
-          {item.definition && (
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Meaning</p>
-              <p className="text-xs text-foreground leading-relaxed whitespace-pre-line break-words [overflow-wrap:anywhere]">{item.definition}</p>
-            </div>
-          )}
-          {item.example_sentence && (
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Example</p>
-              <p className="text-xs text-foreground italic leading-relaxed whitespace-pre-line break-words [overflow-wrap:anywhere]">&ldquo;{item.example_sentence}&rdquo;</p>
-            </div>
-          )}
-          {item.context && (
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">From transcript</p>
-              <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-muted rounded px-2 py-1 break-words [overflow-wrap:anywhere]">{item.context}</p>
-            </div>
-          )}
           {koreanTranslationText && (
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Korean</p>
-              <p className="text-sm font-semibold text-korean break-words [overflow-wrap:anywhere]">
+            <span className="inline-flex max-w-full self-start rounded-md bg-korean/15 px-2 py-0.5 text-xs font-medium text-korean leading-snug wrap-anywhere">
+              {koreanTranslationText}
+            </span>
+          )}
+        </div>
+
+        {/* Right: action buttons */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {/* Mastered toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => onToggleMastered(item.id, item.is_mastered)}
+            title={item.is_mastered ? "Mark as not mastered" : "Mark as mastered"}
+          >
+            {item.is_mastered ? (
+              <CheckCircle2 className="h-4 w-4 text-accent" />
+            ) : (
+              <Circle className="h-4 w-4" />
+            )}
+          </Button>
+
+          {/* Translate */}
+          {!koreanTranslationText && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => onTranslate(item)}
+              disabled={isTranslating}
+              title="Translate to Korean"
+            >
+              <Globe className={cn("h-4 w-4", isTranslating && "animate-pulse text-primary")} />
+            </Button>
+          )}
+
+          {/* Expand */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded(!expanded)}
+            title="Toggle details"
+          >
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+
+          {/* Delete */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+            onClick={() => onDelete(item.id)}
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="border-t border-border/60 px-3 pb-3 pt-2.5 space-y-3">
+          {item.definition && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Meaning</p>
+              <p className="text-sm leading-relaxed text-foreground whitespace-pre-line wrap-anywhere">
+                {item.definition}
+              </p>
+            </div>
+          )}
+
+          {item.example_sentence && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Example</p>
+              <p className="text-sm italic leading-relaxed text-foreground/80 wrap-anywhere">
+                &ldquo;{item.example_sentence}&rdquo;
+              </p>
+            </div>
+          )}
+
+          {item.context && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">From transcript</p>
+              <p className="rounded-lg bg-muted/60 px-2.5 py-2 font-mono text-xs leading-relaxed text-muted-foreground wrap-anywhere">
+                {item.context}
+              </p>
+            </div>
+          )}
+
+          {koreanTranslationText && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Korean</p>
+              <p className="text-base font-semibold text-korean wrap-anywhere">
                 {koreanTranslationText}
               </p>
             </div>
           )}
+
           {!koreanTranslationText && (
             <Button
               size="sm"
               variant="outline"
-              className="w-full text-xs h-7 gap-1"
+              className="w-full gap-1.5 text-xs"
               onClick={() => onTranslate(item)}
               disabled={isTranslating}
             >
-              <Globe className="h-3 w-3" />
-              {isTranslating ? "Translating..." : "Translate to Korean"}
+              <Globe className="h-3.5 w-3.5" />
+              {isTranslating ? "Translating…" : "Translate to Korean"}
             </Button>
           )}
 
-          <div className="border-border/80 space-y-2 border-t border-dashed pt-2">
-            <p className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">AI deeper dive</p>
-            <div className="flex flex-wrap gap-1">
+          {/* AI deep dive */}
+          <div className="space-y-2 border-t border-dashed border-border/60 pt-2.5">
+            <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">AI deeper dive</p>
+            <div className="flex flex-wrap gap-1.5">
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="h-8 gap-1 text-[11px]"
+                className="h-8 gap-1.5 text-xs"
                 disabled={loadingExamples}
                 onClick={() => void runDeepDive("examples")}
               >
-                {loadingExamples ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {loadingExamples ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                 More examples
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="h-8 gap-1 text-[11px]"
+                className="h-8 gap-1.5 text-xs"
                 disabled={loadingEtymology}
                 onClick={() => void runDeepDive("etymology")}
               >
-                {loadingEtymology ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
+                {loadingEtymology ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
                 Etymology
               </Button>
             </div>
-            {aiError && <p className="text-destructive text-xs leading-snug">{aiError}</p>}
+
+            {aiError && <p className="text-xs text-destructive">{aiError}</p>}
+
             {extraExamples && extraExamples.length > 0 && (
-              <div className="min-w-0">
-                <p className="text-muted-foreground mb-1 text-[10px] font-medium uppercase tracking-wide">Extra examples</p>
-                <ul className="text-foreground list-inside list-disc space-y-1 text-xs leading-relaxed">
+              <div>
+                <p className="mb-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Extra examples</p>
+                <ul className="space-y-1.5 text-sm">
                   {extraExamples.map((line, idx) => (
-                    <li key={idx} className="break-words pl-0.5 [overflow-wrap:anywhere]">
+                    <li key={idx} className="flex gap-2 wrap-anywhere leading-relaxed">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40" />
                       {line}
                     </li>
                   ))}
@@ -253,27 +280,28 @@ export function VocabularyCard({
               </div>
             )}
             {Array.isArray(extraExamples) && extraExamples.length === 0 && !loadingExamples && (
-              <p className="text-muted-foreground text-xs">No extra examples returned.</p>
+              <p className="text-xs text-muted-foreground">No extra examples returned.</p>
             )}
+
             {(etymology || relatedForms) && (
-              <div className="min-w-0 space-y-1">
-                {etymology ? (
+              <div className="space-y-2">
+                {etymology && (
                   <div>
-                    <p className="text-muted-foreground mb-0.5 text-[10px] font-medium uppercase tracking-wide">Etymology & roots</p>
-                    <p className="text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words">{etymology}</p>
+                    <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Etymology</p>
+                    <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap wrap-break-word">{etymology}</p>
                   </div>
-                ) : null}
-                {relatedForms ? (
-                  <p className="text-muted-foreground text-[11px] leading-snug">
+                )}
+                {relatedForms && (
+                  <p className="text-xs text-muted-foreground">
                     <span className="font-medium text-foreground">Related: </span>
                     {relatedForms}
                   </p>
-                ) : null}
+                )}
               </div>
             )}
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   )
 }

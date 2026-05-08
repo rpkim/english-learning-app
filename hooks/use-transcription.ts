@@ -118,6 +118,7 @@ export function useTranscription({ onTranscript, onError, localAsrModel = "whisp
   const [utterances, setUtterances] = useState<TranscriptionUtterance[]>([])
   const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null)
   const [isRefining, setIsRefining] = useState(false)
+  const [refineProgress, setRefineProgress] = useState(0)
 
   const workerRef = useRef<Worker | null>(null)
   const onTranscriptRef = useRef(onTranscript)
@@ -358,10 +359,16 @@ export function useTranscription({ onTranscript, onError, localAsrModel = "whisp
     setDebugInfo((prev) => ({ ...prev, chunksSent: prev.chunksSent + 1 }))
   }, [])
 
-  const waitForWorkerReady = useCallback(async () => {
+  const waitForWorkerReady = useCallback(async (timeoutMs = 90_000) => {
     if (workerReadyRef.current) return
-    await new Promise<void>((resolve) => {
-      workerReadyWaitersRef.current.push(resolve)
+    await new Promise<void>((resolve, reject) => {
+      const id = setTimeout(() => {
+        reject(new Error("Timed out waiting for ASR model to load"))
+      }, timeoutMs)
+      workerReadyWaitersRef.current.push(() => {
+        clearTimeout(id)
+        resolve()
+      })
     })
   }, [])
 
@@ -639,8 +646,16 @@ export function useTranscription({ onTranscript, onError, localAsrModel = "whisp
     }
 
     setIsRefining(true)
+    setRefineProgress(0)
     let refinedText = ""
     try {
+      // Mark as not-ready BEFORE posting the load message so that
+      // waitForWorkerReady() below actually suspends until the new
+      // model fires its "ready" event instead of returning immediately
+      // with the stale truthy value.
+      workerReadyRef.current = false
+      workerBusyRef.current = false
+      transcribeRequestRef.current = null
       workerRef.current.postMessage({ type: "load", model })
       await waitForWorkerReady()
 
@@ -652,14 +667,33 @@ export function useTranscription({ onTranscript, onError, localAsrModel = "whisp
 
       const chunkSamples = TARGET_SAMPLE_RATE * 10
       const strideSamples = TARGET_SAMPLE_RATE * 9
+
+      // Pre-calculate total segment count for accurate progress reporting.
+      const totalSegments = Math.max(
+        1,
+        Math.ceil(Math.max(0, prepared.length - TARGET_SAMPLE_RATE) / strideSamples)
+      )
+      let segmentsDone = 0
+
       let nextTranscript = ""
+
       const runSegment = async (segment: Float32Array) => {
         let lastError = "Failed to transcribe segment"
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const segmentCopy = segment.slice(0)
             const resultPromise = new Promise<string>((resolve, reject) => {
-              transcribeRequestRef.current = { resolve, reject }
+              const segTimeout = setTimeout(() => {
+                if (transcribeRequestRef.current) {
+                  transcribeRequestRef.current = null
+                  workerBusyRef.current = false
+                  reject(new Error("Segment transcription timed out"))
+                }
+              }, 60_000)
+              transcribeRequestRef.current = {
+                resolve: (t: string) => { clearTimeout(segTimeout); resolve(t) },
+                reject: (msg: string) => { clearTimeout(segTimeout); reject(new Error(msg)) },
+              }
               workerBusyRef.current = true
               workerRef.current?.postMessage(
                 { type: "transcribe", audio: segmentCopy, samplingRate: TARGET_SAMPLE_RATE, model },
@@ -686,14 +720,20 @@ export function useTranscription({ onTranscript, onError, localAsrModel = "whisp
         const segment = prepared.slice(start, end)
         if (segment.length < TARGET_SAMPLE_RATE) break
         const text = (await runSegment(segment)).trim()
+        segmentsDone++
+        setRefineProgress(Math.min(99, Math.round((segmentsDone / totalSegments) * 100)))
         if (text && text !== "[BLANK_AUDIO]") {
           nextTranscript = appendNonDuplicateTranscript(nextTranscript, text)
+          // Surface each segment as it completes so the user sees the
+          // transcript being rebuilt in real time.
+          setTranscript(nextTranscript.trim())
         }
       }
 
       if (nextTranscript.trim()) {
         setTranscript(nextTranscript.trim())
       }
+      setRefineProgress(100)
       refinedText = nextTranscript.trim()
     } finally {
       setIsRefining(false)
@@ -751,6 +791,7 @@ export function useTranscription({ onTranscript, onError, localAsrModel = "whisp
     utterances,
     recordedAudioBlob,
     isRefining,
+    refineProgress,
     start,
     stop,
     reset,
