@@ -433,7 +433,7 @@ export function LibraryColumn({
   return (
     <div
       className={cn(
-        "border-border flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+        "border-border flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
         variant === "split" ? "border-l" : "border-l-0 sm:border-l",
         className
       )}
@@ -443,7 +443,7 @@ export function LibraryColumn({
         onValueChange={(v) => {
           if (!activeTab) setLocalTab(v as "vocabulary" | "history" | "tutor")
         }}
-        className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
+        className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
         {tabBar}
         <TabsContent value="vocabulary" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">

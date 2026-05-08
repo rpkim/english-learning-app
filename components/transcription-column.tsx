@@ -421,18 +421,21 @@ function MobileTranscriptState({
               <ClipboardPaste className="h-3.5 w-3.5" />
               Paste text
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2 text-xs"
+              onClick={() => void onRefineTranscript()}
+              disabled={isRefining || !recordedAudioBlob}
+            >
+              {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+              Re-transcribe (HQ)
+              {!recordedAudioBlob && <span className="ml-auto text-[10px] text-muted-foreground">record first</span>}
+            </DropdownMenuItem>
             {recordedAudioBlob && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="gap-2 text-xs" onClick={() => void onRefineTranscript()} disabled={isRefining}>
-                  {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
-                  Re-transcribe (HQ)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2 text-xs" onClick={onDownloadRecording}>
-                  <Save className="h-3.5 w-3.5" />
-                  Download audio
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem className="gap-2 text-xs" onClick={onDownloadRecording}>
+                <Save className="h-3.5 w-3.5" />
+                Download audio
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -847,28 +850,27 @@ export function TranscriptionColumn({
                     {isDiarizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
                     {isDiarizing ? "Labeling…" : "Label speakers"}
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 shrink-0 justify-start gap-1.5 text-xs sm:justify-center"
+                    onClick={() => void onRefineTranscript()}
+                    disabled={isRefining || !recordedAudioBlob}
+                    title={!recordedAudioBlob ? "Only available after recording in this session" : undefined}
+                  >
+                    {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+                    {isRefining ? "Refining…" : "Re-transcribe (HQ)"}
+                  </Button>
                   {recordedAudioBlob && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 shrink-0 justify-start gap-1.5 text-xs sm:justify-center"
-                        onClick={() => void onRefineTranscript()}
-                        disabled={isRefining}
-                      >
-                        {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
-                        {isRefining ? "Refining…" : "Re-transcribe (HQ)"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 shrink-0 justify-start gap-1.5 text-xs text-muted-foreground"
-                        onClick={onDownloadRecording}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download audio
-                      </Button>
-                    </>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 shrink-0 justify-start gap-1.5 text-xs text-muted-foreground"
+                      onClick={onDownloadRecording}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download audio
+                    </Button>
                   )}
                 </div>
               </div>
