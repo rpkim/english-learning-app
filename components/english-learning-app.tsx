@@ -1878,7 +1878,7 @@ export function EnglishLearningApp() {
                   {renderTranscription("h-full min-h-0 border-r border-border")}
                 </ResizablePanel>
                 <ResizableHandle withHandle className="bg-border/80 hover:bg-primary/40 data-dragging:bg-primary/50" />
-                <ResizablePanel defaultSize={100 - leftPanelWidthPct} minSize={25} maxSize={75} className="min-w-0">
+                <ResizablePanel defaultSize={100 - leftPanelWidthPct} minSize={25} maxSize={75} className="min-w-0 overflow-hidden">
                   {renderLibrary(false)}
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -1897,7 +1897,7 @@ export function EnglishLearningApp() {
             )}
 
             {!rightCollapsed && leftCollapsed && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderLibrary(false, undefined)}</div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{renderLibrary(false, undefined)}</div>
             )}
 
             {rightCollapsed && !isMobile && (
