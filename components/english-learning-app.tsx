@@ -10,7 +10,6 @@ import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +44,11 @@ import {
   Maximize2,
   Lock,
   MoreHorizontal,
+  Moon,
+  Sun,
+  MessageCircle,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { getStorageConfig, saveStorageConfig, StorageConfig, localAsrModelShortLabel } from "@/lib/storage-config"
@@ -132,10 +135,11 @@ export function EnglishLearningApp() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
   const isMobile = useIsMobile()
-  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "study">("capture")
+  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "words" | "sessions" | "tutor">("capture")
+  const { resolvedTheme, setTheme } = useTheme()
 
   // Transcription hook
-  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, utterances, recordedAudioBlob, isRefining, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
+  const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, utterances, recordedAudioBlob, isRefining, refineProgress, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
     useTranscription({
       onError: (msg) => toast.error(msg),
       localAsrModel: storageConfig.localAsrModel,
@@ -811,6 +815,16 @@ export function EnglishLearningApp() {
     }
   }, [transcript, interimTranscript])
 
+  const handleApplySpeakerLabels = useCallback(() => {
+    if (diarizedItems.length === 0) return
+    const labeled = diarizedItems
+      .map((item: { text: string; speaker: "A" | "B" }) => `${item.speaker}: ${item.text}`)
+      .join("\n")
+    setTranscript(labeled)
+    setSpeakerPreview("")
+    toast.success("Speaker labels applied to transcript")
+  }, [diarizedItems, setTranscript])
+
   const handleRefineTranscript = useCallback(async () => {
     try {
       const refined = await refineTranscript()
@@ -1447,6 +1461,7 @@ export function EnglishLearningApp() {
     <TranscriptionColumn
       className={cn(panelClassName)}
       compactToolbar={isMobile}
+      hasBottomNav={isMobile}
       showCollapseButton={!isMobile}
       onCollapseLeft={collapseLeftPanel}
       isRecording={isRecording}
@@ -1482,6 +1497,7 @@ export function EnglishLearningApp() {
       recordedAudioBlob={recordedAudioBlob}
       onRefineTranscript={() => void handleRefineTranscript()}
       isRefining={isRefining}
+      refineProgress={refineProgress}
       onDownloadRecording={downloadRecording}
       onAutoDiarize={() => void handleAutoDiarize()}
       isDiarizing={isDiarizing}
@@ -1492,6 +1508,7 @@ export function EnglishLearningApp() {
       isTranslatingAllText={isTranslatingAllText}
       recentSnippetTranslation={recentSnippetTranslation}
       speakerPreview={speakerPreview}
+      onApplySpeakerLabels={handleApplySpeakerLabels}
       loadingFile={loadingFile}
       loadingProgress={loadingProgress}
       fullTranscriptTranslation={fullTranscriptTranslation}
@@ -1513,12 +1530,19 @@ export function EnglishLearningApp() {
     />
   )
 
-  const renderLibrary = (soloMobile: boolean) => (
+  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "words" | "sessions" | "tutor") => (
     <LibraryColumn
       variant={soloMobile ? "solo" : "split"}
       onCollapseRight={soloMobile ? undefined : collapseRightPanel}
       leftCollapsed={leftCollapsed}
       onExpandLeft={soloMobile ? undefined : expandLeftPanel}
+      activeTab={
+        mobileActiveTab === "words" ? "vocabulary"
+        : mobileActiveTab === "sessions" ? "history"
+        : mobileActiveTab === "tutor" ? "tutor"
+        : undefined
+      }
+      hideTabs={soloMobile}
       scopedVocabulary={scopedVocabulary}
       conversations={conversations}
       conversationGroups={conversationGroups}
@@ -1577,46 +1601,87 @@ export function EnglishLearningApp() {
       )}
     >
       {/* Header */}
-      <header className="border-border bg-card flex shrink-0 flex-col gap-2 border-b px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-3 sm:pt-3 min-w-0">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <GraduationCap className="text-primary h-6 w-6 shrink-0" />
-          <div className="min-w-0">
-            <h1 className="text-foreground truncate text-base font-bold leading-tight sm:text-lg">SurviveEnglish</h1>
-            <p className="text-muted-foreground line-clamp-2 text-[11px] sm:text-xs">Capture · learn · review — in one flow</p>
+      <header className={cn(
+        "border-border bg-card/90 backdrop-blur-md supports-backdrop-filter:bg-card/80",
+        "flex shrink-0 items-center justify-between gap-2 border-b min-w-0",
+        "px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-5 sm:py-2.5 sm:pt-2.5"
+      )}>
+        {/* Brand */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="bg-primary/10 rounded-lg p-1.5 shrink-0">
+            <GraduationCap className="text-primary h-4 w-4" />
           </div>
+          <h1 className="text-foreground font-bold text-sm sm:text-base leading-none">SurviveEnglish</h1>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap">
-          {status === "loading_model" && (
-            <div className="bg-muted text-muted-foreground hidden min-w-0 max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs sm:flex">
+
+        {/* Center: recording status (mobile) or model status (desktop) */}
+        <div className="flex flex-1 items-center justify-center gap-2 min-w-0 px-2">
+          {/* Mobile: recording indicator */}
+          {isMobile && isRecording && (
+            <button
+              onClick={() => setMobileMainTab("capture")}
+              className="flex items-center gap-1.5 rounded-full bg-recording/10 px-2.5 py-1 text-xs font-medium text-recording"
+            >
+              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-recording" />
+              <span className="font-mono tabular-nums">
+                {String(Math.floor(duration / 60)).padStart(2, "0")}:{String(duration % 60).padStart(2, "0")}
+              </span>
+            </button>
+          )}
+          {/* Desktop: model loading / error */}
+          {!isMobile && status === "loading_model" && (
+            <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground min-w-0 max-w-xs">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
               <span className="truncate">
                 {loadingProgress > 0
-                  ? `Loading ${localAsrModelShortLabel(storageConfig.localAsrModel)} ${loadingProgress}%`
-                  : `Downloading ${localAsrModelShortLabel(storageConfig.localAsrModel)}...`}
+                  ? `Loading ${localAsrModelShortLabel(storageConfig.localAsrModel)} · ${loadingProgress}%`
+                  : `Downloading ${localAsrModelShortLabel(storageConfig.localAsrModel)}…`}
               </span>
             </div>
           )}
-          {status === "error" && (
-            <div className="bg-destructive/10 text-destructive flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs">
+          {!isMobile && status === "error" && (
+            <div className="flex items-center gap-1.5 rounded-full bg-destructive/10 text-destructive px-3 py-1 text-xs">
               <AlertCircle className="h-3 w-3 shrink-0" />
-              <span className="leading-snug">Web Speech fallback</span>
+              <span>Web Speech fallback</span>
             </div>
           )}
-          <Badge variant="outline" className="hidden gap-1 text-xs sm:flex">
-            <BookOpen className="h-3 w-3" />
-            {vocabulary.length} words · {masteredCount} mastered
-          </Badge>
+        </div>
+
+        {/* Right actions */}
+        <div className="flex items-center gap-1">
+          {/* Vocab stats pill (desktop) */}
+          <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground mr-0.5">
+            <BookOpen className="h-3 w-3 text-primary/70" />
+            <span className="tabular-nums font-medium text-foreground">{vocabulary.length}</span>
+            <span>words</span>
+            {masteredCount > 0 && (
+              <>
+                <span className="text-border">·</span>
+                <span className="tabular-nums text-accent-foreground font-medium">{masteredCount}</span>
+                <span>mastered</span>
+              </>
+            )}
+          </div>
+
+          {/* Storage badge (desktop) */}
           <Badge
             variant="outline"
-            className={cn("hidden gap-1 text-xs sm:flex", isLocal ? "text-muted-foreground border-border" : "text-primary border-primary/30 bg-primary/5")}
+            className={cn(
+              "hidden gap-1 text-xs sm:flex h-6 cursor-default select-none",
+              isLocal
+                ? "text-muted-foreground border-border/60 bg-transparent"
+                : "text-primary border-primary/30 bg-primary/5"
+            )}
           >
             {isLocal ? <HardDrive className="h-3 w-3" /> : <Database className="h-3 w-3" />}
-            {isLocal ? "Local" : "Supabase"}
+            {isLocal ? "Local" : "Cloud"}
           </Badge>
+
+          {/* Mobile menu */}
           {isMobile && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="border-border text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 sm:hidden" aria-label="App menu">
+                <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" aria-label="App menu">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1628,7 +1693,7 @@ export function EnglishLearningApp() {
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled className="text-xs">
                   {isLocal ? <HardDrive className="mr-2 h-3.5 w-3.5" /> : <Database className="mr-2 h-3.5 w-3.5" />}
-                  {isLocal ? "Local storage" : "Supabase"}
+                  {isLocal ? "Local storage" : "Cloud (Supabase)"}
                 </DropdownMenuItem>
                 {status === "loading_model" && (
                   <DropdownMenuItem disabled className="text-xs">
@@ -1637,6 +1702,14 @@ export function EnglishLearningApp() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-xs" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
+                  {resolvedTheme === "dark" ? (
+                    <Sun className="mr-2 h-3.5 w-3.5" />
+                  ) : (
+                    <Moon className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+                </DropdownMenuItem>
                 <DropdownMenuItem className="text-xs" onClick={() => setShowConfig(true)}>
                   <Settings2 className="mr-2 h-3.5 w-3.5" />
                   Settings & storage
@@ -1644,24 +1717,50 @@ export function EnglishLearningApp() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+
+          {/* Settings */}
           <Button
             variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-foreground hidden h-8 w-8 p-0 sm:flex sm:h-7 sm:w-7"
+            size="icon"
+            className="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setShowConfig(true)}
-            title="Storage configuration"
+            title="Settings"
           >
             <Settings2 className="h-4 w-4" />
           </Button>
+
+          {/* Dark mode toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-foreground relative overflow-hidden"
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all duration-300 dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all duration-300 dark:rotate-0 dark:scale-100" />
+          </Button>
+
+          {/* Desktop controls */}
           {isDesktop && (
             <>
-              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs sm:h-7" onClick={() => void handleToggleAlwaysOnTop()} title="Always on top">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => void handleToggleAlwaysOnTop()}
+                title={alwaysOnTop ? "Unpin window" : "Always on top"}
+              >
                 {alwaysOnTop ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
-                {alwaysOnTop ? "Pinned" : "Pin"}
               </Button>
-              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs sm:h-7" onClick={() => void handleToggleDesktopViewMode()} title="Compact or full view">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => void handleToggleDesktopViewMode()}
+                title={desktopViewMode === "compact" ? "Full view" : "Compact view"}
+              >
                 {desktopViewMode === "compact" ? <Maximize2 className="h-3.5 w-3.5" /> : <Minimize2 className="h-3.5 w-3.5" />}
-                {desktopViewMode === "compact" ? "Full" : "Compact"}
               </Button>
             </>
           )}
@@ -1671,38 +1770,100 @@ export function EnglishLearningApp() {
       {/* Main layout */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isMobile ? (
-          <Tabs
-            value={mobileMainTab}
-            onValueChange={(v) => setMobileMainTab(v as "capture" | "study")}
-            className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
-          >
-            <TabsList className="border-border mx-3 mt-1 grid h-12 shrink-0 grid-cols-2 gap-1 rounded-2xl border bg-muted/60 p-1 ring-1 ring-border/50">
-              <TabsTrigger
-                value="capture"
-                className="data-[state=active]:bg-card gap-2 rounded-xl py-2.5 text-xs font-medium data-[state=active]:shadow-sm"
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* Recording indicator — shown when recording on non-capture tab */}
+            {isRecording && mobileMainTab !== "capture" && (
+              <button
+                onClick={() => setMobileMainTab("capture")}
+                className="flex w-full shrink-0 items-center gap-2 border-b border-recording/20 bg-recording/10 px-4 py-2"
+                aria-label="Recording in progress – tap to view transcript"
               >
-                <Mic className="h-4 w-4 opacity-80" />
-                Transcribe
-              </TabsTrigger>
-              <TabsTrigger
-                value="study"
-                className="data-[state=active]:bg-card gap-2 rounded-xl py-2.5 text-xs font-medium data-[state=active]:shadow-sm"
-              >
-                <BookOpen className="h-4 w-4 opacity-80" />
-                Study
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="capture" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-              {renderTranscription(
-                "flex-1 min-h-0 border-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1"
-              )}
-            </TabsContent>
-            <TabsContent value="study" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-                {renderLibrary(true)}
+                <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-recording" />
+                <span className="font-mono text-sm font-medium tabular-nums text-recording">
+                  {String(Math.floor(duration / 60)).padStart(2, "0")}:{String(duration % 60).padStart(2, "0")}
+                </span>
+                <span className="text-sm text-recording">· Recording</span>
+                <span className="ml-auto text-xs text-recording/60">View →</span>
+              </button>
+            )}
+
+            {/* Content panels — always mounted, CSS show/hide preserves state */}
+            <div
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+              style={{ display: mobileMainTab === "capture" ? "flex" : "none" }}
+            >
+              {renderTranscription("flex-1 min-h-0")}
+            </div>
+            <div
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+              style={{ display: mobileMainTab !== "capture" ? "flex" : "none" }}
+            >
+              {renderLibrary(true, mobileMainTab !== "capture" ? mobileMainTab : "words")}
+            </div>
+
+            {/* Bottom navigation */}
+            <nav
+              className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md"
+              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            >
+              <div className="grid h-14 grid-cols-4">
+                {(
+                  [
+                    { value: "capture" as const, icon: Mic, label: "Capture" },
+                    { value: "words" as const, icon: BookOpen, label: "Words" },
+                    { value: "sessions" as const, icon: History, label: "Sessions" },
+                    { value: "tutor" as const, icon: MessageCircle, label: "Tutor" },
+                  ] as const
+                ).map(({ value, icon: Icon, label }) => {
+                  const isActive = mobileMainTab === value
+                  const badgeCount =
+                    value === "words" && !isActive && vocabulary.length > 0
+                      ? vocabulary.length
+                      : value === "sessions" && !isActive && conversations.length > 0
+                        ? conversations.length
+                        : null
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => setMobileMainTab(value)}
+                      aria-current={isActive ? "page" : undefined}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-0.5 transition-colors duration-150",
+                        isActive ? "text-primary" : "text-muted-foreground active:text-foreground"
+                      )}
+                    >
+                      <div className="relative">
+                        <Icon
+                          className={cn(
+                            "h-5 w-5",
+                            value === "capture" && isRecording && "text-recording"
+                          )}
+                        />
+                        {/* Recording pulse indicator on Capture nav item */}
+                        {value === "capture" && isRecording && (
+                          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full border-[1.5px] border-card bg-recording" />
+                        )}
+                        {/* Count badge */}
+                        {badgeCount !== null && (
+                          <span className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-primary px-1 text-center font-mono text-[9px] font-bold leading-4 text-primary-foreground">
+                            {badgeCount > 99 ? "99+" : badgeCount}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium leading-none",
+                          value === "capture" && isRecording && "text-recording"
+                        )}
+                      >
+                        {label}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-            </TabsContent>
-          </Tabs>
+            </nav>
+          </div>
         ) : (
           <>
             {!leftCollapsed && !rightCollapsed && (
@@ -1736,7 +1897,7 @@ export function EnglishLearningApp() {
             )}
 
             {!rightCollapsed && leftCollapsed && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderLibrary(false)}</div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderLibrary(false, undefined)}</div>
             )}
 
             {rightCollapsed && !isMobile && (

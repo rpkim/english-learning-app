@@ -46,33 +46,45 @@ export function TranscriptPanel({
 
   return (
     <div
-      className="border-border bg-card relative min-h-[min(40dvh,14rem)] w-full min-w-0 shrink-0 cursor-text select-text rounded-xl border p-3 font-mono text-sm leading-relaxed sm:min-h-[min(48dvh,18rem)] sm:p-4"
+      className={cn(
+        "relative min-h-[min(40dvh,14rem)] w-full min-w-0 shrink-0 cursor-text select-text rounded-xl border p-3 font-mono text-sm leading-relaxed transition-colors duration-300 sm:min-h-[min(48dvh,18rem)] sm:p-4",
+        isRecording
+          ? "border-recording/40 bg-recording/2.5"
+          : "border-border bg-card"
+      )}
       onMouseUp={handleMouseUp}
       onTouchEnd={handleMouseUp}
     >
       {isEmpty ? (
-        <div className="text-muted-foreground flex min-h-[min(32dvh,12rem)] flex-col items-center justify-center gap-3 px-2 sm:min-h-[12rem]">
-          <Mic2 className="h-10 w-10 opacity-30" />
-          <p className="text-sm text-center text-balance">
+        <div className="text-muted-foreground flex min-h-[min(32dvh,12rem)] flex-col items-center justify-center gap-3 px-4 sm:min-h-48">
+          <div className={cn(
+            "rounded-2xl p-4 transition-colors duration-300",
+            isRecording ? "bg-recording/10" : "bg-muted/50"
+          )}>
+            <Mic2 className={cn("h-8 w-8", isRecording ? "text-recording animate-pulse" : "opacity-25")} />
+          </div>
+          <p className="max-w-[28ch] text-center text-sm leading-relaxed text-balance">
             {isRecording
-              ? "Listening... speak or play audio from your computer"
-              : "Press Start to transcribe audio, or use Load / Paste in the toolbar to bring in text."}
+              ? "Listening… speak or play audio from your computer."
+              : "Press Start to transcribe audio, or use Load / Paste to bring in text."}
           </p>
         </div>
       ) : isEditing ? (
         <textarea
           value={transcript}
           onChange={(e) => onTranscriptChange(e.target.value)}
-          className="min-h-[min(50dvh,20rem)] w-full min-w-0 resize-none bg-transparent text-foreground outline-none break-words sm:min-h-[18rem] [overflow-wrap:anywhere]"
+          className="min-h-[min(50dvh,20rem)] w-full min-w-0 resize-none bg-transparent text-foreground outline-none wrap-anywhere sm:min-h-72"
           spellCheck={false}
           placeholder="Edit transcript here..."
         />
       ) : (
         <>
-          <span className="text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{renderHighlightedTranscript(transcript, vocabulary)}</span>
+          <span className="whitespace-pre-wrap wrap-anywhere text-foreground">
+            {renderHighlightedTranscript(transcript, vocabulary)}
+          </span>
           {interimTranscript && (
-            <span className={cn("text-muted-foreground", isRecording && "animate-pulse")}>
-              {interimTranscript}
+            <span className={cn("text-muted-foreground/70", isRecording && "animate-pulse")}>
+              {" "}{interimTranscript}
             </span>
           )}
           <div ref={bottomRef} />

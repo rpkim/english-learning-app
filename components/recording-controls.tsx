@@ -43,33 +43,33 @@ export function RecordingControls({
   isSaved = false,
 }: RecordingControlsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 sm:gap-3 [&_button]:min-h-9 sm:[&_button]:min-h-8">
-      {/* Timer */}
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Timer pill */}
       {(isRecording || duration > 0) && (
         <div
           className={cn(
-            "flex items-center gap-1.5 font-mono text-xs sm:text-sm px-2.5 sm:px-3 py-1 rounded-full border",
+            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-sm font-medium tabular-nums",
             isRecording
-              ? "bg-recording/10 text-recording border-recording/30"
-              : "bg-muted text-muted-foreground border-border"
+              ? "border-recording/40 bg-recording/10 text-recording"
+              : "border-border bg-muted text-muted-foreground"
           )}
         >
           {isRecording && (
-            <span className="h-2 w-2 rounded-full bg-recording animate-pulse" />
+            <span className="h-2 w-2 shrink-0 rounded-full bg-recording animate-pulse" />
           )}
           {formatDuration(duration)}
         </div>
       )}
 
-      {/* Audio source badge — shown while recording */}
+      {/* Audio source badge while recording */}
       {isRecording && audioSource && (
         <Badge
           variant="outline"
           className={cn(
-            "gap-1 text-xs border",
+            "gap-1 text-xs",
             audioSource === "system"
-              ? "text-primary border-primary/30 bg-primary/5"
-              : "text-accent-foreground border-accent/40 bg-accent/10"
+              ? "border-primary/30 bg-primary/5 text-primary"
+              : "border-accent/40 bg-accent/10 text-accent-foreground"
           )}
         >
           {audioSource === "system" ? (
@@ -77,74 +77,94 @@ export function RecordingControls({
           ) : (
             <Mic className="h-3 w-3" />
           )}
-          {audioSource === "system" ? "System audio" : "Microphone"}
+          {audioSource === "system" ? "System" : "Mic"}
         </Badge>
       )}
 
-      {/* Start / Stop button */}
+      {/* Start / Stop */}
       {isRecording ? (
         <Button
           onClick={onStop}
           variant="destructive"
-          className="gap-1.5 font-semibold h-8"
+          size="sm"
+          className="h-9 gap-2 font-semibold shadow-sm"
           disabled={isLoading}
         >
-          <Square className="h-4 w-4 fill-current" />
+          <Square className="h-3.5 w-3.5 fill-current" />
           Stop
         </Button>
       ) : (
         <Button
           onClick={onStart}
-          className="gap-1.5 font-semibold h-8 bg-primary text-primary-foreground hover:bg-primary/90"
+          size="sm"
+          className="h-9 gap-2 font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
           disabled={isLoading}
         >
           {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Mic className="h-4 w-4" />
+            <Mic className="h-3.5 w-3.5" />
           )}
-          {isLoading ? "Starting..." : "Start"}
+          {isLoading ? "Starting…" : "Start"}
         </Button>
       )}
 
-      {/* Save button */}
+      {/* Post-recording actions */}
       {hasTranscript && !isRecording && (
         <>
-          <Button onClick={onNew} variant="ghost" className="gap-1.5 h-8 px-2.5" disabled={isSaving || isExtracting || isLoading}>
-            <Plus className="h-4 w-4" />
+          <Button
+            onClick={onNew}
+            variant="ghost"
+            size="sm"
+            className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
+            disabled={isSaving || isExtracting || isLoading}
+          >
+            <Plus className="h-3.5 w-3.5" />
             New
           </Button>
+
           {!isSaved && onExtractOnly && (
             <Button
               onClick={onExtractOnly}
               variant="secondary"
-              className="gap-1.5 h-8 px-2.5"
+              size="sm"
+              className="h-9 gap-1.5 px-2.5"
               disabled={isSaving || isExtracting}
-              title="Extract vocabulary without creating a new session (links to current session when set)"
+              title="Extract vocabulary without creating a new session"
             >
               {isExtracting && !isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-3.5 w-3.5" />
               )}
-              <span className="hidden sm:inline">{isExtracting && !isSaving ? "Extracting..." : "Extract words"}</span>
+              <span className="hidden sm:inline">
+                {isExtracting && !isSaving ? "Extracting…" : "Extract words"}
+              </span>
               <span className="sm:hidden">{isExtracting && !isSaving ? "…" : "Extract"}</span>
             </Button>
           )}
+
           <Button
             onClick={onSave}
             variant="outline"
-            className="gap-1.5 h-8 px-2.5"
+            size="sm"
+            className="h-9 gap-1.5 px-2.5"
             disabled={isSaving || isExtracting}
           >
             {isSaving || isExtracting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : isSaved ? (
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-3.5 w-3.5" />
             ) : (
-              <Save className="h-4 w-4" />
+              <Save className="h-3.5 w-3.5" />
             )}
-            {isExtracting ? "Extracting..." : isSaving ? "Saving..." : isSaved ? "Extract again" : "Save & Extract"}
+            {isExtracting
+              ? "Extracting…"
+              : isSaving
+                ? "Saving…"
+                : isSaved
+                  ? "Extract again"
+                  : "Save & Extract"}
           </Button>
         </>
       )}

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Conversation, ConversationGroup, VocabularyItem } from "@/lib/types"
 import { VocabularyCard } from "@/components/vocabulary-card"
 import { ConversationHistory } from "@/components/conversation-history"
@@ -7,9 +8,19 @@ import { TutorChatPanel } from "@/components/tutor-chat-panel"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, History, Plus, Globe, FileDown, Loader2, EyeOff, PanelRightClose, PanelLeftOpen, ListFilter, MessageCircle } from "lucide-react"
+import {
+  BookOpen,
+  History,
+  Plus,
+  Globe,
+  FileDown,
+  Loader2,
+  EyeOff,
+  PanelRightClose,
+  PanelLeftOpen,
+  MessageCircle,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Separator } from "@/components/ui/separator"
 
 export interface LibraryColumnProps {
   className?: string
@@ -17,6 +28,10 @@ export interface LibraryColumnProps {
   onCollapseRight?: () => void
   leftCollapsed?: boolean
   onExpandLeft?: () => void
+  /** Externally controlled active tab (for mobile bottom nav) */
+  activeTab?: "vocabulary" | "history" | "tutor"
+  /** Hide the inner tab bar (when bottom nav handles navigation) */
+  hideTabs?: boolean
   scopedVocabulary: VocabularyItem[]
   conversations: Conversation[]
   conversationGroups: ConversationGroup[]
@@ -57,7 +72,6 @@ export interface LibraryColumnProps {
   translatingId: string | null
   onAddFrequentWord: (word: string) => void | Promise<void>
   onExcludeTopWord: (word: string) => void
-  /** Latest transcript text (optional context for the tutor). */
   tutorTranscriptContext: string
 }
 
@@ -67,6 +81,8 @@ export function LibraryColumn({
   onCollapseRight,
   leftCollapsed,
   onExpandLeft,
+  activeTab,
+  hideTabs = false,
   scopedVocabulary,
   conversations,
   conversationGroups,
@@ -109,6 +125,9 @@ export function LibraryColumn({
   onExcludeTopWord,
   tutorTranscriptContext,
 }: LibraryColumnProps) {
+  const [localTab, setLocalTab] = useState<"vocabulary" | "history" | "tutor">("vocabulary")
+  const effectiveTab = activeTab ?? localTab
+
   const scopeLabel =
     selectedConversationId
       ? "This recording"
@@ -118,41 +137,72 @@ export function LibraryColumn({
           ? "This folder"
           : "All saved words"
 
-  const tabBar = (
+  const tabBar = hideTabs ? null : (
     <div className="border-border shrink-0 border-b px-3 pt-2 sm:px-4">
-      <div className="mb-2 flex items-center justify-end gap-1">
-        {onCollapseRight && (
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-6 sm:w-6" onClick={onCollapseRight} title="Collapse study panel">
-            <PanelRightClose className="h-3.5 w-3.5" />
-          </Button>
-        )}
-        {leftCollapsed && onExpandLeft && (
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-6 sm:w-6" onClick={onExpandLeft} title="Expand transcribe panel">
-            <PanelLeftOpen className="h-3.5 w-3.5" />
-          </Button>
-        )}
-      </div>
-      <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5 rounded-xl bg-muted/70 p-1 sm:gap-1">
-        <TabsTrigger value="vocabulary" className="gap-0.5 rounded-lg px-1 py-2.5 text-[10px] sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-xs">
-          <BookOpen className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+      {/* Panel controls row */}
+      {(onCollapseRight || (leftCollapsed && onExpandLeft)) && (
+        <div className="mb-2 flex items-center gap-1 justify-end">
+          {leftCollapsed && onExpandLeft && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onExpandLeft}
+              title="Expand transcribe panel"
+            >
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {onCollapseRight && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onCollapseRight}
+              title="Collapse study panel"
+            >
+              <PanelRightClose className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5 rounded-xl bg-muted/50 p-1">
+        <TabsTrigger
+          value="vocabulary"
+          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
+        >
+          <BookOpen className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">Words</span>
           {scopedVocabulary.length > 0 && (
-            <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[9px] sm:h-4 sm:px-1.5 sm:text-[10px]">
+            <Badge
+              variant="secondary"
+              className="h-4 min-w-4 rounded-full px-1 text-[9px] leading-none sm:text-[10px]"
+            >
               {scopedVocabulary.length}
             </Badge>
           )}
         </TabsTrigger>
-        <TabsTrigger value="history" className="gap-0.5 rounded-lg px-1 py-2.5 text-[10px] sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-xs">
-          <History className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+        <TabsTrigger
+          value="history"
+          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
+        >
+          <History className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">Sessions</span>
           {conversations.length > 0 && (
-            <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[9px] sm:h-4 sm:px-1.5 sm:text-[10px]">
+            <Badge
+              variant="secondary"
+              className="h-4 min-w-4 rounded-full px-1 text-[9px] leading-none sm:text-[10px]"
+            >
               {conversations.length}
             </Badge>
           )}
         </TabsTrigger>
-        <TabsTrigger value="tutor" className="gap-0.5 rounded-lg px-1 py-2.5 text-[10px] sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-xs">
-          <MessageCircle className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+        <TabsTrigger
+          value="tutor"
+          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
+        >
+          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">Tutor</span>
         </TabsTrigger>
       </TabsList>
@@ -160,92 +210,143 @@ export function LibraryColumn({
   )
 
   const vocabToolbar = (
-    <div className="border-border flex min-w-0 shrink-0 flex-col gap-3 border-b px-3 py-2.5 sm:px-4 sm:py-2">
-      <div className="min-w-0 w-full space-y-2">
+    <div className="border-border flex min-w-0 shrink-0 flex-col gap-2.5 border-b px-3 py-3 sm:px-4">
+      {/* Scope + filter row */}
+      <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-muted-foreground text-xs font-medium leading-snug">{scopeLabel}</p>
-          <p className="text-muted-foreground/80 mt-0.5 text-[10px] leading-snug">Words and phrases for the scope above.</p>
-        </div>
-        <div className="-mx-1 flex min-w-0 flex-wrap items-end gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:thin]">
-          <div className="flex shrink-0 flex-col gap-0.5">
-            <span className="text-muted-foreground flex items-center gap-1 pl-0.5 text-[10px] font-medium tracking-wide uppercase">
-              <ListFilter className="h-3 w-3" />
-              View
-            </span>
-            <div className="flex shrink-0 items-center gap-1 rounded-lg bg-muted/50 p-0.5">
-              <Button variant={vocabView === "items" ? "secondary" : "ghost"} size="sm" className="h-8 shrink-0 px-2.5 text-[11px] sm:h-6" onClick={() => setVocabView("items")}>
-                Items
-              </Button>
-              <Button
-                variant={vocabView === "frequency" ? "secondary" : "ghost"}
-                size="sm"
-                className="h-8 shrink-0 px-2.5 text-[11px] sm:h-6"
-                onClick={() => setVocabView("frequency")}
-              >
-                Top words
-              </Button>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col gap-0.5">
-            <span className="text-muted-foreground pl-0.5 text-[10px] font-medium tracking-wide uppercase">Type</span>
-            <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
-              <Button variant={vocabFilter === "all" ? "secondary" : "ghost"} size="sm" className="h-8 shrink-0 px-2 text-[11px] sm:h-6" onClick={() => setVocabFilter("all")}>
-                All {scopedVocabulary.length}
-              </Button>
-              <Button variant={vocabFilter === "word" ? "secondary" : "ghost"} size="sm" className="h-8 shrink-0 px-2 text-[11px] sm:h-6" onClick={() => setVocabFilter("word")}>
-                Words {wordCount}
-              </Button>
-              <Button variant={vocabFilter === "idiom" ? "secondary" : "ghost"} size="sm" className="h-8 shrink-0 px-2 text-[11px] sm:h-6" onClick={() => setVocabFilter("idiom")}>
-                Idioms {idiomCount}
-              </Button>
-              <Button variant={vocabFilter === "slang" ? "secondary" : "ghost"} size="sm" className="h-8 shrink-0 px-2 text-[11px] sm:h-6" onClick={() => setVocabFilter("slang")}>
-                Slang {slangCount}
-              </Button>
-            </div>
-          </div>
+          <p className="truncate text-sm font-medium text-foreground">{scopeLabel}</p>
           {selectedConversationId && (
-            <Button variant="ghost" size="sm" className="text-muted-foreground h-8 shrink-0 px-2 text-xs sm:h-5" onClick={onShowAllVocabulary}>
-              Clear recording filter
-            </Button>
+            <button
+              onClick={onShowAllVocabulary}
+              className="mt-0.5 text-[11px] text-primary hover:underline"
+            >
+              Clear filter →
+            </button>
           )}
         </div>
+        {masteredCount > 0 && (
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {masteredCount}/{scopedVocabulary.length} mastered
+          </span>
+        )}
       </div>
-      <Separator className="bg-border/80" />
-      <div className="flex min-w-0 w-full flex-col gap-2">
-        <span className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">Export & translate</span>
-        <div className="flex min-w-0 w-full flex-wrap items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs sm:h-7" onClick={onExportCsv} title="Export vocabulary as CSV">
-            <FileDown className="h-3.5 w-3.5" />
-            CSV
+
+      {/* Type filter chips */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
+        {/* View toggle */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+          <Button
+            variant={vocabView === "items" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 rounded-md px-2.5 text-xs"
+            onClick={() => setVocabView("items")}
+          >
+            Items
           </Button>
-          <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs sm:h-7" onClick={() => void onExportPdf()} disabled={isExportingPdf} title="Export vocabulary as PDF">
-            {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-            PDF
-          </Button>
-          <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs sm:h-7" onClick={onShowManualAdd}>
-            <Plus className="h-3.5 w-3.5" />
-            Add
-          </Button>
-          <Button variant="ghost" size="sm" className="h-9 min-w-0 gap-1 px-2 text-xs sm:h-7" onClick={() => void onTranslateScoped()} disabled={isBatchTranslating} title="Translate all in current scope">
-            {isBatchTranslating ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Globe className="h-3.5 w-3.5 shrink-0" />}
-            <span className="min-w-0 truncate">Translate all</span>
+          <Button
+            variant={vocabView === "frequency" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 rounded-md px-2.5 text-xs"
+            onClick={() => setVocabView("frequency")}
+          >
+            Top words
           </Button>
         </div>
+
+        <div className="h-4 w-px bg-border/60 shrink-0" />
+
+        {/* Type filter */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+          {(
+            [
+              { key: "all", label: `All ${scopedVocabulary.length}` },
+              { key: "word", label: `Words ${wordCount}` },
+              { key: "idiom", label: `Idioms ${idiomCount}` },
+              { key: "slang", label: `Slang ${slangCount}` },
+            ] as const
+          ).map(({ key, label }) => (
+            <Button
+              key={key}
+              variant={vocabFilter === key ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 rounded-md px-2 text-xs"
+              onClick={() => setVocabFilter(key)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Action row */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={onShowManualAdd}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add word
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => void onTranslateScoped()}
+          disabled={isBatchTranslating}
+          title="Translate all untranslated in current scope"
+        >
+          {isBatchTranslating ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          ) : (
+            <Globe className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="truncate">Translate all</span>
+        </Button>
+        <div className="h-4 w-px bg-border/60 shrink-0" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={onExportCsv}
+          title="Export as CSV"
+        >
+          <FileDown className="h-3.5 w-3.5" />
+          CSV
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => void onExportPdf()}
+          disabled={isExportingPdf}
+          title="Export as PDF"
+        >
+          {isExportingPdf ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <FileDown className="h-3.5 w-3.5" />
+          )}
+          PDF
+        </Button>
       </div>
     </div>
   )
 
   const vocabBody = (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
-      <div className="flex flex-col gap-1.5 p-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:gap-1 sm:pb-2">
+      <div className={cn("flex flex-col gap-1.5 p-2.5", hideTabs ? "pb-20" : "pb-[max(1rem,env(safe-area-inset-bottom))]")}>
         {isLoadingVocab ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : vocabView === "items" && filteredVocabulary.length === 0 ? (
-          <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-12">
-            <BookOpen className="h-10 w-10 opacity-25" />
-            <p className="text-center text-xs text-balance leading-relaxed">No items in this filter yet.</p>
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+            <BookOpen className="h-10 w-10 opacity-20" />
+            <p className="max-w-[20ch] text-center text-sm leading-relaxed text-balance">
+              No vocabulary items yet. Start a session to extract words.
+            </p>
           </div>
         ) : vocabView === "items" ? (
           <>
@@ -259,43 +360,44 @@ export function LibraryColumn({
                 isTranslating={translatingId === item.id}
               />
             ))}
-            {masteredCount > 0 && (
-              <p className="text-muted-foreground py-2 text-center text-xs">
-                {masteredCount} of {scopedVocabulary.length} mastered
-              </p>
-            )}
           </>
         ) : frequentWords.length === 0 ? (
-          <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-12">
-            <BookOpen className="h-10 w-10 opacity-25" />
-            <p className="text-center text-xs text-balance leading-relaxed">No frequent words in this scope yet.</p>
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+            <BookOpen className="h-10 w-10 opacity-20" />
+            <p className="text-center text-sm leading-relaxed">No frequent words in this scope yet.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
             {frequentWords.map((item) => (
               <div
                 key={item.word}
-                className="border-border flex flex-col gap-2 rounded-lg border bg-card/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:py-2"
+                className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted/30"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="min-w-0 max-w-full text-sm font-medium break-all sm:break-normal sm:truncate">{item.word}</span>
-                  <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px]">
-                    {item.count}
+                  <span className="min-w-0 text-sm font-medium break-all sm:break-normal sm:truncate">
+                    {item.word}
+                  </span>
+                  <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] tabular-nums">
+                    ×{item.count}
                   </Badge>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button size="sm" variant="secondary" className="h-9 flex-1 text-xs sm:h-8 sm:flex-none" onClick={() => void onAddFrequentWord(item.word)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 text-xs"
+                    onClick={() => void onAddFrequentWord(item.word)}
+                  >
                     + Add
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-muted-foreground h-9 flex-1 text-xs sm:h-8 sm:flex-none"
+                    className="h-7 text-xs text-muted-foreground"
                     onClick={() => onExcludeTopWord(item.word)}
-                    title="Exclude from top words globally"
+                    title="Exclude from top words"
                   >
-                    <EyeOff className="mr-1 h-3.5 w-3.5" />
-                    Exclude
+                    <EyeOff className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
@@ -307,7 +409,7 @@ export function LibraryColumn({
   )
 
   const historyBody = (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 sm:p-3">
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 sm:p-3", hideTabs && "pb-20")}>
       <ConversationHistory
         conversations={conversations}
         groups={conversationGroups}
@@ -336,7 +438,13 @@ export function LibraryColumn({
         className
       )}
     >
-      <Tabs defaultValue="vocabulary" className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
+      <Tabs
+        value={effectiveTab}
+        onValueChange={(v) => {
+          if (!activeTab) setLocalTab(v as "vocabulary" | "history" | "tutor")
+        }}
+        className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
+      >
         {tabBar}
         <TabsContent value="vocabulary" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
           {vocabToolbar}
@@ -346,7 +454,7 @@ export function LibraryColumn({
           {historyBody}
         </TabsContent>
         <TabsContent value="tutor" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-          <TutorChatPanel transcriptContext={tutorTranscriptContext} className="min-h-0 flex-1" />
+          <TutorChatPanel transcriptContext={tutorTranscriptContext} className={cn("min-h-0 flex-1", hideTabs && "pb-16")} />
         </TabsContent>
       </Tabs>
     </div>
