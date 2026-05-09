@@ -1,9 +1,10 @@
 "use client"
 
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
-import { Mic2 } from "lucide-react"
+import { Mic2, Volume2, VolumeX } from "lucide-react"
 import { VocabularyItem } from "@/lib/types"
+import { useTts } from "@/hooks/use-tts"
 
 interface TranscriptPanelProps {
   transcript: string
@@ -29,6 +30,8 @@ export function TranscriptPanel({
   diarizedItems: _diarizedItems = [],
 }: TranscriptPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const { speak, speakingText } = useTts()
+  const [ttsSelection, setTtsSelection] = useState<string | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -39,6 +42,9 @@ export function TranscriptPanel({
     const selected = selection?.toString().trim()
     if (selected && selected.length > 1) {
       onTextSelect(selected)
+      setTtsSelection(selected)
+    } else {
+      setTtsSelection(null)
     }
   }
 
@@ -55,6 +61,25 @@ export function TranscriptPanel({
       onMouseUp={handleMouseUp}
       onTouchEnd={handleMouseUp}
     >
+      {ttsSelection && (
+        <div
+          className="absolute bottom-3 right-3 z-10"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => speak(ttsSelection)}
+            className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-md hover:bg-primary/90 transition-colors"
+          >
+            {speakingText === ttsSelection ? (
+              <><VolumeX className="h-3.5 w-3.5 animate-pulse" /> Stop</>
+            ) : (
+              <><Volume2 className="h-3.5 w-3.5" /> Speak</>
+            )}
+          </button>
+        </div>
+      )}
       {isEmpty ? (
         <div className="text-muted-foreground flex min-h-[min(32dvh,12rem)] flex-col items-center justify-center gap-3 px-4 sm:min-h-48">
           <div className={cn(
