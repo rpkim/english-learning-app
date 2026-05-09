@@ -4,8 +4,9 @@ import { useState } from "react"
 import { VocabularyItem } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle, Sparkles, GitBranch, Loader2 } from "lucide-react"
+import { CheckCircle2, ChevronDown, ChevronUp, Globe, Trash2, Circle, Sparkles, GitBranch, Loader2, Volume2, VolumeX } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useTts } from "@/hooks/use-tts"
 
 const TYPE_COLORS: Record<string, string> = {
   word: "bg-primary/10 text-primary border-primary/20",
@@ -49,6 +50,7 @@ export function VocabularyCard({
 }: VocabularyCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [extraExamples, setExtraExamples] = useState<string[] | null>(null)
+  const { speak, speakingText } = useTts()
   const [etymology, setEtymology] = useState<string | null>(null)
   const [relatedForms, setRelatedForms] = useState<string | null>(null)
   const [loadingExamples, setLoadingExamples] = useState(false)
@@ -117,6 +119,16 @@ export function VocabularyCard({
             >
               {TYPE_LABELS[item.type] ?? item.type}
             </Badge>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); speak(item.word) }}
+              title="Speak word"
+              className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {speakingText === item.word
+                ? <VolumeX className="h-3.5 w-3.5 animate-pulse text-primary" />
+                : <Volume2 className="h-3.5 w-3.5" />}
+            </button>
           </div>
           {koreanTranslationText && (
             <span className="inline-flex max-w-full self-start rounded-md bg-korean/15 px-2 py-0.5 text-xs font-medium text-korean leading-snug wrap-anywhere">
@@ -198,7 +210,19 @@ export function VocabularyCard({
 
           {item.example_sentence && (
             <div>
-              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Example</p>
+              <div className="mb-1 flex items-center gap-1.5">
+                <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Example</p>
+                <button
+                  type="button"
+                  onClick={() => speak(item.example_sentence!)}
+                  title="Speak example sentence"
+                  className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {speakingText === item.example_sentence
+                    ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
+                    : <Volume2 className="h-3 w-3" />}
+                </button>
+              </div>
               <p className="text-sm italic leading-relaxed text-foreground/80 wrap-anywhere">
                 &ldquo;{item.example_sentence}&rdquo;
               </p>
@@ -271,9 +295,19 @@ export function VocabularyCard({
                 <p className="mb-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Extra examples</p>
                 <ul className="space-y-1.5 text-sm">
                   {extraExamples.map((line, idx) => (
-                    <li key={idx} className="flex gap-2 wrap-anywhere leading-relaxed">
+                    <li key={idx} className="flex items-start gap-2 wrap-anywhere leading-relaxed">
                       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40" />
-                      {line}
+                      <span className="flex-1">{line}</span>
+                      <button
+                        type="button"
+                        onClick={() => speak(line)}
+                        title="Speak this example"
+                        className="mt-0.5 shrink-0 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {speakingText === line
+                          ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
+                          : <Volume2 className="h-3 w-3" />}
+                      </button>
                     </li>
                   ))}
                 </ul>
