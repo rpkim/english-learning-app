@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextResponse } from "next/server"
+import { GEMINI_MODEL } from "@/lib/storage-config"
 
 interface BatchItem {
   id: string
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
 
     const trimmed = items.slice(0, 80)
     const payload = trimmed.map((item) => ({

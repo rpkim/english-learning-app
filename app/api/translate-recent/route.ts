@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextResponse } from "next/server"
+import { GEMINI_MODEL } from "@/lib/storage-config"
 
 function extractRecentSentences(text: string, maxSentences = 3) {
   const cleaned = text.replace(/\s+/g, " ").trim()
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
     const prompt = `Translate the following recent English transcript to natural Korean.
 
 Requirements:

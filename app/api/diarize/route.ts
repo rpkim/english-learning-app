@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextResponse } from "next/server"
+import { GEMINI_MODEL } from "@/lib/storage-config"
 
 type DiarizedItem = { text: string; speaker: "A" | "B" }
 
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
     const prompt = `You are a dialogue segmentation assistant.
 Given this transcript, split it into utterances and assign each utterance to speaker "A" or "B".
 Use context to keep turns coherent.

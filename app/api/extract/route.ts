@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextResponse } from "next/server"
+import { GEMINI_MODEL } from "@/lib/storage-config"
 
 type ExtractedItem = {
   word: string
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
 
     const prompt = `You are an English language teacher. Analyze the following English transcript and extract vocabulary items that would be useful for an English learner.
 

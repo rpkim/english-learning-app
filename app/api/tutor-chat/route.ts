@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextResponse } from "next/server"
+import { GEMINI_MODEL } from "@/lib/storage-config"
 
 type ChatMsg = { role: "user" | "assistant"; content: string }
 
@@ -40,7 +41,7 @@ ${excerpt ? `\nOptional transcript they are working from (may be partial):\n---\
 
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       systemInstruction: system,
     })
 
