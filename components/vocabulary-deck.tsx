@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { VocabularyItem } from "@/lib/types"
@@ -55,6 +55,27 @@ export function VocabularyDeck({
     return () => window.removeEventListener("keydown", handler)
   }, [go])
 
+  // Touch swipe
+  const touchStartX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    const dy = e.changedTouches[0].clientY - touchStartY.current
+    // Only trigger if horizontal swipe is dominant and long enough
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+      go(dx < 0 ? 1 : -1)
+    }
+    touchStartX.current = null
+    touchStartY.current = null
+  }
+
   if (items.length === 0) {
     return (
       <div className={cn("flex h-full flex-col items-center justify-center gap-3 text-center", className)}>
@@ -68,8 +89,12 @@ export function VocabularyDeck({
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
-      {/* Card area */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4">
+      {/* Card area — swipeable */}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div
           className={cn(
             "rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-180",
