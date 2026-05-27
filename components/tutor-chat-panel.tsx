@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Loader2, HelpCircle, Languages, Sparkles, Mic, MicOff,
-  BookmarkPlus, Check, ChevronRight, Trash2,
+  HelpCircle, Languages, Sparkles, Mic, MicOff,
+  BookmarkPlus, Check, ChevronRight, Trash2, Volume2, VolumeX,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { VocabularyItem, TutorChatMessage } from "@/lib/types"
 import type { LookupResult, MeaningResult, TranslateResult, NaturalizeResult } from "@/app/api/tutor-lookup/route"
+import { useTts } from "@/hooks/use-tts"
 
 // ── Web Speech API types (not in all TS libs) ──────────────────────────────
 interface SpeechRecognitionResultItem { transcript: string; confidence: number }
@@ -92,12 +93,41 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
+// ── TTS button ─────────────────────────────────────────────────────────────
+function TtsBtn({ text, speak, speakingText, size = "sm" }: {
+  text: string
+  speak: (t: string) => void
+  speakingText: string | null
+  size?: "sm" | "md"
+}) {
+  const isPlaying = speakingText === text
+  return (
+    <button
+      type="button"
+      onClick={() => speak(text)}
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full border transition-all",
+        size === "sm" ? "h-6 w-6" : "h-7 w-7",
+        isPlaying
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : "border-border/60 bg-muted/40 text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+      )}
+      title={isPlaying ? "정지" : "읽기"}
+    >
+      {isPlaying
+        ? <VolumeX className={cn(size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5")} />
+        : <Volume2 className={cn(size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5")} />}
+    </button>
+  )
+}
+
 // ── Card: meaning ──────────────────────────────────────────────────────────
-function MeaningCard({ r }: { r: MeaningResult }) {
+function MeaningCard({ r, speak, speakingText }: { r: MeaningResult; speak: (t: string) => void; speakingText: string | null }) {
   return (
     <>
-      <div className="flex flex-wrap items-baseline gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <h2 className="text-2xl font-bold tracking-tight">{r.query}</h2>
+        <TtsBtn text={r.query} speak={speak} speakingText={speakingText} size="md" />
         {r.register && (
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", REGISTER_COLOR[r.register] ?? REGISTER_COLOR.Neutral)}>
             {r.register}
@@ -121,7 +151,10 @@ function MeaningCard({ r }: { r: MeaningResult }) {
           <div className="flex flex-col gap-2.5">
             {r.examples.map((ex, i) => (
               <div key={i} className="rounded-xl border-l-2 border-primary/40 bg-muted/50 px-3 py-2">
-                <p className="text-sm font-medium">{ex.en}</p>
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 text-sm font-medium">{ex.en}</p>
+                  <TtsBtn text={ex.en} speak={speak} speakingText={speakingText} />
+                </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">{ex.ko}</p>
               </div>
             ))}
@@ -139,12 +172,15 @@ function MeaningCard({ r }: { r: MeaningResult }) {
 }
 
 // ── Card: translate ────────────────────────────────────────────────────────
-function TranslateCard({ r }: { r: TranslateResult }) {
+function TranslateCard({ r, speak, speakingText }: { r: TranslateResult; speak: (t: string) => void; speakingText: string | null }) {
   return (
     <>
       <div className="mb-4">
         <SectionLabel>원문</SectionLabel>
-        <p className="text-[15px] leading-relaxed text-foreground/70 italic">"{r.query}"</p>
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-[15px] leading-relaxed text-foreground/70 italic">"{r.query}"</p>
+          <TtsBtn text={r.query} speak={speak} speakingText={speakingText} size="md" />
+        </div>
       </div>
 
       <div className="mb-4">
@@ -169,17 +205,23 @@ function TranslateCard({ r }: { r: TranslateResult }) {
 }
 
 // ── Card: naturalize ───────────────────────────────────────────────────────
-function NaturalizeCard({ r }: { r: NaturalizeResult }) {
+function NaturalizeCard({ r, speak, speakingText }: { r: NaturalizeResult; speak: (t: string) => void; speakingText: string | null }) {
   return (
     <>
       <div className="mb-4">
         <SectionLabel>원문</SectionLabel>
-        <p className="text-sm leading-relaxed text-foreground/60 line-through">{r.query}</p>
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-sm leading-relaxed text-foreground/60 line-through">{r.query}</p>
+          <TtsBtn text={r.query} speak={speak} speakingText={speakingText} />
+        </div>
       </div>
 
       <div className="mb-4">
         <SectionLabel>개선된 표현</SectionLabel>
-        <p className="text-xl font-semibold leading-relaxed text-green-600 dark:text-green-400">{r.improved}</p>
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-xl font-semibold leading-relaxed text-green-600 dark:text-green-400">{r.improved}</p>
+          <TtsBtn text={r.improved} speak={speak} speakingText={speakingText} size="md" />
+        </div>
       </div>
 
       {r.alternatives.length > 0 && (
@@ -188,7 +230,10 @@ function NaturalizeCard({ r }: { r: NaturalizeResult }) {
           <div className="flex flex-col gap-2">
             {r.alternatives.map((alt, i) => (
               <div key={i} className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
-                <p className="text-sm font-medium">{alt.text}</p>
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 text-sm font-medium">{alt.text}</p>
+                  <TtsBtn text={alt.text} speak={speak} speakingText={speakingText} />
+                </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">{alt.note}</p>
               </div>
             ))}
@@ -251,18 +296,57 @@ function EmptyState({ activeQuick }: { activeQuick: QuickKind }) {
   )
 }
 
+// ── Queue item ─────────────────────────────────────────────────────────────
+type QueueItem = {
+  id: string
+  query: string
+  kind: QuickKind
+  status: "loading" | "done" | "error"
+  result?: LookupResult
+  savedFlash?: boolean
+}
+
+function makePayload(result: LookupResult): AddVocabPayload {
+  if (result.type === "meaning") {
+    const r = result as import("@/app/api/tutor-lookup/route").MeaningResult
+    const contextParts = [
+      r.examples[1] ? `"${r.examples[1].en}" — ${r.examples[1].ko}` : null,
+      r.register ? `Register: ${r.register}` : null,
+      r.tips ?? null,
+    ].filter(Boolean)
+    return {
+      word: r.query, type: "word",
+      korean_translation: r.meaning,
+      definition: r.nuance,
+      example_sentence: r.examples[0]?.en,
+      context: contextParts.length ? [r.examples[0]?.ko, ...contextParts].filter(Boolean).join("\n") : r.examples[0]?.ko,
+    }
+  } else if (result.type === "translate") {
+    const r = result as import("@/app/api/tutor-lookup/route").TranslateResult
+    return { word: r.query, type: "expression", korean_translation: r.translation, definition: r.literal ?? undefined, context: r.note ?? undefined }
+  } else {
+    const r = result as import("@/app/api/tutor-lookup/route").NaturalizeResult
+    return {
+      word: r.query, type: "expression",
+      definition: r.improved,
+      example_sentence: r.alternatives[0]?.text,
+      context: [r.changes, r.alternatives.slice(1).map((a) => `• ${a.text} — ${a.note}`).join("\n")].filter(Boolean).join("\n\n"),
+    }
+  }
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 export function TutorChatPanel({ transcriptContext, className, onAddVocabularyItem, onSaveSession }: TutorChatPanelProps) {
-  const [result, setResult] = useState<LookupResult | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<QueueItem[]>([])
   const [activeQuick, setActiveQuick] = useState<QuickKind>("meaning")
   const [draft, setDraft] = useState("")
-  const [savedFlash, setSavedFlash] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const { speak, speakingText } = useTts()
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null)
   const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
   const sessionMessagesRef = useRef<TutorChatMessage[]>([])
+  const feedRef = useRef<HTMLDivElement>(null)
 
   // Auto-save session on unmount
   useEffect(() => {
@@ -277,7 +361,6 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
   const selectTab = (kind: QuickKind) => {
     setActiveQuick(kind)
     setDraft("")
-    setResult(null)
     requestAnimationFrame(() => inputRef.current?.focus())
   }
 
@@ -318,95 +401,55 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
     setIsListening(true)
   }, [isListening])
 
-  const submit = async () => {
+  const submit = () => {
     const text = draft.trim()
-    if (!text || loading) return
-    setLoading(true)
-    setResult(null)
+    if (!text) return
+    const id = crypto.randomUUID()
+    const kind = activeQuick
     setDraft("")
     recognitionRef.current?.stop()
-
-    try {
-      const res = await fetch("/api/tutor-lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, type: activeQuick }),
-      })
-      const data = (await res.json()) as LookupResult
-      setResult(data)
-      // Save to session history for History tab
-      sessionMessagesRef.current = [
-        ...sessionMessagesRef.current,
-        { role: "user", content: text },
-        { role: "assistant", content: JSON.stringify(data) },
-      ]
-    } catch {
-      // silent fail — user can retry
-    } finally {
-      setLoading(false)
-    }
+    // Add loading item at top of feed
+    setItems((prev) => [{ id, query: text, kind, status: "loading" }, ...prev])
+    // Scroll feed to top
+    requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }))
+    // Background fetch — doesn't block input
+    void (async () => {
+      try {
+        const res = await fetch("/api/tutor-lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, type: kind }),
+        })
+        const data = (await res.json()) as LookupResult
+        setItems((prev) => prev.map((it) => it.id === id ? { ...it, status: "done", result: data } : it))
+        sessionMessagesRef.current = [
+          ...sessionMessagesRef.current,
+          { role: "user", content: text },
+          { role: "assistant", content: JSON.stringify(data) },
+        ]
+      } catch {
+        setItems((prev) => prev.map((it) => it.id === id ? { ...it, status: "error" } : it))
+      }
+    })()
   }
 
-  const handlePass = () => {
-    setResult(null)
-    requestAnimationFrame(() => inputRef.current?.focus())
+  const handlePass = (id: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== id))
   }
 
-  const handleSave = () => {
-    if (!result || !onAddVocabularyItem) return
-
-    let payload: AddVocabPayload
-
-    if (result.type === "meaning") {
-      const r = result as import("@/app/api/tutor-lookup/route").MeaningResult
-      const contextParts = [
-        r.examples[1] ? `"${r.examples[1].en}" — ${r.examples[1].ko}` : null,
-        r.register ? `Register: ${r.register}` : null,
-        r.tips ?? null,
-      ].filter(Boolean)
-      payload = {
-        word: r.query,
-        type: "word",
-        korean_translation: r.meaning,
-        definition: r.nuance,
-        example_sentence: r.examples[0] ? `${r.examples[0].en}` : undefined,
-        context: contextParts.length
-          ? [r.examples[0]?.ko, ...contextParts].filter(Boolean).join("\n")
-          : r.examples[0]?.ko,
-      }
-    } else if (result.type === "translate") {
-      const r = result as import("@/app/api/tutor-lookup/route").TranslateResult
-      payload = {
-        word: r.query,
-        type: "expression",
-        korean_translation: r.translation,
-        definition: r.literal ?? undefined,
-        context: r.note ?? undefined,
-      }
-    } else {
-      const r = result as import("@/app/api/tutor-lookup/route").NaturalizeResult
-      payload = {
-        word: r.query,
-        type: "expression",
-        definition: r.improved,
-        example_sentence: r.alternatives[0]?.text,
-        context: [r.changes, r.alternatives.slice(1).map((a) => `• ${a.text} — ${a.note}`).join("\n")].filter(Boolean).join("\n\n"),
-      }
-    }
-
-    onAddVocabularyItem(payload)
-    setSavedFlash(true)
+  const handleSave = (item: QueueItem) => {
+    if (!item.result || !onAddVocabularyItem) return
+    onAddVocabularyItem(makePayload(item.result))
+    setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, savedFlash: true } : it))
     setTimeout(() => {
-      setSavedFlash(false)
-      setResult(null)
-      requestAnimationFrame(() => inputRef.current?.focus())
+      setItems((prev) => prev.filter((it) => it.id !== item.id))
     }, 900)
   }
 
   const clearSession = () => {
     if (sessionMessagesRef.current.length > 0) onSaveSession?.(sessionMessagesRef.current)
     sessionMessagesRef.current = []
-    setResult(null)
+    setItems([])
     setDraft("")
   }
 
@@ -415,62 +458,83 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
   return (
     <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", className)}>
 
-      {/* ── Result / empty area ── */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4">
-        {loading && <LookupSkeleton />}
+      {/* ── Feed area ── */}
+      <div ref={feedRef} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4">
+        {items.length === 0 && <EmptyState activeQuick={activeQuick} />}
 
-        {!loading && !result && <EmptyState activeQuick={activeQuick} />}
-
-        {!loading && result && (
-          <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
-            {/* Card body */}
-            <div className="p-4 sm:p-5">
-              {result.type === "meaning" && <MeaningCard r={result as MeaningResult} />}
-              {result.type === "translate" && <TranslateCard r={result as TranslateResult} />}
-              {result.type === "naturalize" && <NaturalizeCard r={result as NaturalizeResult} />}
+        {items.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {/* Clear all */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={clearSession}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              >
+                <Trash2 className="h-3 w-3" />
+                전체 지우기
+              </button>
             </div>
 
-            {/* Card actions */}
-            <div className="flex items-center gap-2 border-t border-border/40 bg-muted/30 px-4 py-3">
-              {savedFlash ? (
-                <div className="flex items-center gap-1.5 text-sm font-medium text-green-600 dark:text-green-400">
-                  <Check className="h-4 w-4" /> 단어장에 저장됐어요!
-                </div>
-              ) : (
-                <>
-                  {onAddVocabularyItem && (
+            {items.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+                {item.status === "loading" && <LookupSkeleton />}
+
+                {item.status === "error" && (
+                  <div className="flex items-center gap-2 p-4 text-sm text-destructive">
+                    검색 실패 — 다시 시도해 주세요.
                     <button
                       type="button"
-                      onClick={handleSave}
-                      className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                      onClick={() => handlePass(item.id)}
+                      className="ml-auto text-xs text-muted-foreground hover:text-foreground"
                     >
-                      <BookmarkPlus className="h-4 w-4" />
-                      단어장에 저장
+                      닫기
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handlePass}
-                    className="flex items-center gap-1 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  >
-                    패스
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </>
-              )}
+                  </div>
+                )}
 
-              {/* Session clear — only when history exists */}
-              {sessionMessagesRef.current.length > 0 && !savedFlash && (
-                <button
-                  type="button"
-                  onClick={clearSession}
-                  className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  세션 초기화
-                </button>
-              )}
-            </div>
+                {item.status === "done" && item.result && (
+                  <>
+                    {/* Card body */}
+                    <div className="p-4 sm:p-5">
+                      {item.result.type === "meaning" && <MeaningCard r={item.result as MeaningResult} speak={speak} speakingText={speakingText} />}
+                      {item.result.type === "translate" && <TranslateCard r={item.result as TranslateResult} speak={speak} speakingText={speakingText} />}
+                      {item.result.type === "naturalize" && <NaturalizeCard r={item.result as NaturalizeResult} speak={speak} speakingText={speakingText} />}
+                    </div>
+
+                    {/* Card actions */}
+                    <div className="flex items-center gap-2 border-t border-border/40 bg-muted/30 px-4 py-3">
+                      {item.savedFlash ? (
+                        <div className="flex items-center gap-1.5 text-sm font-medium text-green-600 dark:text-green-400">
+                          <Check className="h-4 w-4" /> 단어장에 저장됐어요!
+                        </div>
+                      ) : (
+                        <>
+                          {onAddVocabularyItem && (
+                            <button
+                              type="button"
+                              onClick={() => handleSave(item)}
+                              className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                            >
+                              <BookmarkPlus className="h-4 w-4" />
+                              단어장에 저장
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handlePass(item.id)}
+                            className="flex items-center gap-1 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                          >
+                            패스
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -484,7 +548,6 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
             <button
               key={kind}
               type="button"
-              disabled={loading}
               onClick={() => selectTab(kind)}
               className={cn(
                 "flex shrink-0 h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-all",
@@ -513,11 +576,10 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
               onChange={(e) => setDraft(e.target.value)}
               placeholder={isListening ? "🎤 듣는 중…" : activeTabMeta.placeholder}
               rows={1}
-              disabled={loading}
               className="min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3.5 text-[15px] leading-snug shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
               style={{ maxHeight: "9rem", overflowY: "auto" }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit() }
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit() }
                 if (e.key === "Escape") { setDraft(""); recognitionRef.current?.stop() }
               }}
               onInput={(e) => {
@@ -532,10 +594,9 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={isListening ? "🎤 듣는 중…" : activeTabMeta.placeholder}
-              disabled={loading}
               className="flex-1 border-0 bg-transparent px-4 py-3.5 text-[15px] shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50 h-auto"
               onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); void submit() }
+                if (e.key === "Enter") { e.preventDefault(); submit() }
                 if (e.key === "Escape") { setDraft(""); recognitionRef.current?.stop() }
               }}
             />
@@ -546,7 +607,6 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
             <button
               type="button"
               onClick={toggleMic}
-              disabled={loading}
               className={cn(
                 "flex h-9 w-9 items-center justify-center rounded-full transition-all",
                 isListening
@@ -560,18 +620,16 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
 
             <button
               type="button"
-              disabled={!draft.trim() || loading}
-              onClick={() => void submit()}
+              disabled={!draft.trim()}
+              onClick={() => submit()}
               className={cn(
                 "flex h-9 w-9 items-center justify-center rounded-full transition-all",
-                draft.trim() && !loading
+                draft.trim()
                   ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                   : "bg-muted text-muted-foreground"
               )}
             >
-              {loading
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <ChevronRight className="h-5 w-5" />}
+              <ChevronRight className="h-5 w-5" />
             </button>
           </div>
         </div>
