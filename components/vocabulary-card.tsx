@@ -121,7 +121,7 @@ export function VocabularyCard({
   }
 
   const body = (
-    <div className={cn(variant === "list" ? "p-4" : "p-0")}>
+    <div className={cn(variant === "list" ? "p-4" : "p-5 sm:p-6")}>
       {/* Word + badges */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h3 className={cn("font-bold tracking-tight", variant === "full" ? "text-2xl" : "text-lg")}>
@@ -278,7 +278,7 @@ export function VocabularyCard({
           type="button"
           onClick={() => downloadVocabImage(item)}
           title="Instagram 이미지로 저장 (1080×1350)"
-          className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+          className="flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
         >
           <ImageDown className="h-3 w-3" />
           이미지
@@ -287,7 +287,7 @@ export function VocabularyCard({
         <button
           type="button"
           onClick={() => onDelete(item.id)}
-          className="ml-auto flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 transition hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+          className="ml-auto flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="h-3 w-3" />
           삭제

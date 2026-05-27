@@ -85,13 +85,15 @@ export function VocabularyDeck({
     )
   }
 
-  const item = items[index]
+  const safeIndex = Math.min(index, items.length - 1)
+  const item = items[safeIndex]
+  if (!item) return null
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
       {/* Card area — swipeable */}
       <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-4 sm:px-8 md:px-12"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
