@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Conversation, ConversationGroup, VocabularyItem, TutorSession } from "@/lib/types"
 import { VocabularyCard } from "@/components/vocabulary-card"
+import { VocabularyDeck } from "@/components/vocabulary-deck"
 import { ConversationHistory } from "@/components/conversation-history"
 import { TutorChatPanel } from "@/components/tutor-chat-panel"
 import { TutorHistoryPanel } from "@/components/tutor-history-panel"
@@ -21,6 +22,8 @@ import {
   PanelLeftOpen,
   MessageCircle,
   MoreHorizontal,
+  LayoutList,
+  GalleryHorizontal,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -82,7 +85,7 @@ export interface LibraryColumnProps {
   onAddFrequentWord: (word: string) => void | Promise<void>
   onExcludeTopWord: (word: string) => void
   tutorTranscriptContext: string
-  onAddVocabularyFromTutor?: (payload: { word: string; type: VocabularyItem["type"]; definition?: string; context?: string }) => void
+  onAddVocabularyFromTutor?: (payload: { word: string; type: VocabularyItem["type"]; definition?: string; example_sentence?: string; korean_translation?: string; context?: string }) => void
   onSaveTutorSession?: (messages: import("@/lib/types").TutorChatMessage[]) => void
   tutorSessions: TutorSession[]
   onDeleteTutorSession: (id: string) => void
@@ -150,6 +153,7 @@ export function LibraryColumn({
 }: LibraryColumnProps) {
   const [localTab, setLocalTab] = useState<"vocabulary" | "history" | "tutor" | "tutor-history">("tutor")
   const effectiveTab = activeTab ?? localTab
+  const [vocabDisplayView, setVocabDisplayView] = useState<"list" | "deck">("list")
 
   const scopeLabel =
     vocabSourceFilter === "tutor"
@@ -253,7 +257,7 @@ export function LibraryColumn({
 
   const vocabToolbar = (
     <div className="border-border flex min-w-0 shrink-0 flex-col gap-2 border-b px-3 py-2.5 sm:px-4">
-      {/* Row 1: Scope label + mastered + actions */}
+      {/* Row 1: Scope label + view toggle + actions */}
       <div className="flex min-w-0 items-center gap-2">
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <p className="truncate text-sm font-semibold text-foreground">{scopeLabel}</p>
@@ -270,6 +274,32 @@ export function LibraryColumn({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          {/* List / Deck view toggle */}
+          <div className="flex rounded-lg border border-border/60 bg-muted/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => setVocabDisplayView("list")}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-md transition-all",
+                vocabDisplayView === "list" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+              title="리스트 보기"
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setVocabDisplayView("deck")}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-md transition-all",
+                vocabDisplayView === "deck" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+              title="카드 보기"
+            >
+              <GalleryHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
           <Button
             variant="ghost"
             size="sm"
@@ -310,7 +340,7 @@ export function LibraryColumn({
 
       {/* Row 2: Source + type filters */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
-        {/* Source filter — always show when vocab exists */}
+        {/* Source filter */}
         {scopedVocabulary.length > 0 || vocabSourceFilter !== "all" ? (
           <>
             {(
@@ -364,39 +394,51 @@ export function LibraryColumn({
   )
 
   const vocabBody = (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
-      <div className={cn("flex flex-col gap-1 p-2 sm:p-2.5", hideTabs ? "pb-20" : "pb-[max(1rem,env(safe-area-inset-bottom))]")}>
-        {isLoadingVocab ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    <div className="min-h-0 flex-1 overflow-hidden">
+      {isLoadingVocab ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredVocabulary.length === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+          <BookOpen className="h-8 w-8 opacity-20" />
+          <p className="max-w-[22ch] text-sm leading-relaxed text-balance">
+            {vocabSourceFilter === "tutor"
+              ? "Tutor에서 저장한 단어가 없습니다."
+              : "아직 저장된 단어가 없습니다."}
+          </p>
+        </div>
+      ) : vocabDisplayView === "deck" ? (
+        <VocabularyDeck
+          items={filteredVocabulary}
+          onDelete={onDeleteVocab}
+          onToggleMastered={onToggleMastered}
+          onTranslate={onTranslate}
+          translatingId={translatingId}
+          className="h-full"
+        />
+      ) : (
+        <div className="h-full overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+          <div className="flex flex-col gap-2 p-2.5 pb-4 sm:p-3 sm:pb-4">
+            {filteredVocabulary.map((item) => (
+              <VocabularyCard
+                key={item.id}
+                item={item}
+                onDelete={onDeleteVocab}
+                onToggleMastered={onToggleMastered}
+                onTranslate={onTranslate}
+                isTranslating={translatingId === item.id}
+                variant="list"
+              />
+            ))}
           </div>
-        ) : filteredVocabulary.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
-            <BookOpen className="h-8 w-8 opacity-20" />
-            <p className="max-w-[22ch] text-sm leading-relaxed text-balance">
-              {vocabSourceFilter === "tutor"
-                ? "Tutor에서 저장한 단어가 없습니다."
-                : "아직 저장된 단어가 없습니다."}
-            </p>
-          </div>
-        ) : (
-          filteredVocabulary.map((item) => (
-            <VocabularyCard
-              key={item.id}
-              item={item}
-              onDelete={onDeleteVocab}
-              onToggleMastered={onToggleMastered}
-              onTranslate={onTranslate}
-              isTranslating={translatingId === item.id}
-            />
-          ))
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 
   const historyBody = (
-    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 sm:p-3", hideTabs && "pb-20")}>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 sm:p-3">
       <ConversationHistory
         conversations={conversations}
         groups={conversationGroups}
@@ -443,7 +485,7 @@ export function LibraryColumn({
         <TabsContent value="tutor" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
           <TutorChatPanel
             transcriptContext={tutorTranscriptContext}
-            className={cn("min-h-0 flex-1", hideTabs && "pb-16")}
+            className="min-h-0 flex-1"
             onAddVocabularyItem={onAddVocabularyFromTutor}
             onSaveSession={onSaveTutorSession}
           />

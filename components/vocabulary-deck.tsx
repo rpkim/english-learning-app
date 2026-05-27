@@ -1,0 +1,147 @@
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react"
+import { cn } from "@/lib/utils"
+import type { VocabularyItem } from "@/lib/types"
+import { VocabularyCard } from "@/components/vocabulary-card"
+
+interface VocabularyDeckProps {
+  items: VocabularyItem[]
+  onDelete: (id: string) => void
+  onToggleMastered: (id: string, current: boolean) => void
+  onTranslate: (item: VocabularyItem) => void
+  translatingId: string | null
+  className?: string
+}
+
+export function VocabularyDeck({
+  items,
+  onDelete,
+  onToggleMastered,
+  onTranslate,
+  translatingId,
+  className,
+}: VocabularyDeckProps) {
+  const [index, setIndex] = useState(0)
+  const [direction, setDirection] = useState<"left" | "right" | null>(null)
+  const [animating, setAnimating] = useState(false)
+
+  // Clamp index when items change
+  useEffect(() => {
+    setIndex((i) => Math.min(i, Math.max(0, items.length - 1)))
+  }, [items.length])
+
+  const go = useCallback((delta: number) => {
+    if (animating || items.length <= 1) return
+    const next = index + delta
+    if (next < 0 || next >= items.length) return
+    setDirection(delta > 0 ? "left" : "right")
+    setAnimating(true)
+    setTimeout(() => {
+      setIndex(next)
+      setDirection(null)
+      setAnimating(false)
+    }, 180)
+  }, [animating, index, items.length])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") go(-1)
+      if (e.key === "ArrowRight") go(1)
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [go])
+
+  if (items.length === 0) {
+    return (
+      <div className={cn("flex h-full flex-col items-center justify-center gap-3 text-center", className)}>
+        <BookOpen className="h-10 w-10 text-muted-foreground/20" />
+        <p className="text-sm text-muted-foreground">저장된 단어가 없습니다.</p>
+      </div>
+    )
+  }
+
+  const item = items[index]
+
+  return (
+    <div className={cn("flex h-full flex-col", className)}>
+      {/* Card area */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4">
+        <div
+          className={cn(
+            "rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-180",
+            animating && direction === "left" && "-translate-x-4 opacity-0",
+            animating && direction === "right" && "translate-x-4 opacity-0",
+            !animating && "translate-x-0 opacity-100",
+            item.is_mastered && "opacity-60"
+          )}
+        >
+          <VocabularyCard
+            item={item}
+            onDelete={(id) => {
+              onDelete(id)
+              // go to previous if deleting last card
+              if (index >= items.length - 1 && index > 0) setIndex(index - 1)
+            }}
+            onToggleMastered={onToggleMastered}
+            onTranslate={onTranslate}
+            isTranslating={translatingId === item.id}
+            variant="full"
+          />
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="shrink-0 border-t border-border/40 px-3 py-3 sm:px-4">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            disabled={index === 0}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+
+          {/* Dot indicators + counter */}
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="flex items-center gap-1">
+              {items.slice(Math.max(0, index - 3), index + 4).map((it, i) => {
+                const realIdx = Math.max(0, index - 3) + i
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => setIndex(realIdx)}
+                    className={cn(
+                      "rounded-full transition-all",
+                      realIdx === index
+                        ? "h-2 w-5 bg-primary"
+                        : "h-1.5 w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60"
+                    )}
+                  />
+                )
+              })}
+              {items.length > 7 && <span className="ml-1 text-[10px] text-muted-foreground">…</span>}
+            </div>
+            <p className="text-[11px] tabular-nums text-muted-foreground">
+              {index + 1} / {items.length}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => go(1)}
+            disabled={index === items.length - 1}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

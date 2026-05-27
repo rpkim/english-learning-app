@@ -1049,7 +1049,14 @@ export function EnglishLearningApp() {
   }, [])
 
   const handleAddVocabularyFromTutor = useCallback(
-    (payload: { word: string; type: VocabularyItem["type"]; definition?: string; context?: string }) => {
+    (payload: {
+      word: string
+      type: VocabularyItem["type"]
+      definition?: string
+      example_sentence?: string
+      korean_translation?: string
+      context?: string
+    }) => {
       const already = vocabulary.some((v) => v.word.toLowerCase() === payload.word.toLowerCase())
       if (already) {
         toast.info(`"${payload.word}" is already in vocabulary`)
@@ -1062,9 +1069,9 @@ export function EnglishLearningApp() {
           type: payload.type,
           source: "tutor",
           definition: payload.definition ?? null,
-          example_sentence: null,
+          example_sentence: payload.example_sentence ?? null,
           context: payload.context ?? null,
-          korean_translation: null,
+          korean_translation: payload.korean_translation ?? null,
         })
         setVocabulary((prev) => [saved, ...prev])
         toast.success(`"${saved.word}" added to vocabulary`)
