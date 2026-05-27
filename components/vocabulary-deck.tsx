@@ -26,24 +26,27 @@ export function VocabularyDeck({
   const [index, setIndex] = useState(0)
   const [direction, setDirection] = useState<"left" | "right" | null>(null)
   const [animating, setAnimating] = useState(false)
+  const itemsRef = useRef(items)
+  useEffect(() => { itemsRef.current = items }, [items])
 
-  // Clamp index when items change
+  // Clamp index whenever items array reference changes (covers filter/delete)
   useEffect(() => {
-    setIndex((i) => Math.min(i, Math.max(0, items.length - 1)))
-  }, [items.length])
+    setIndex((i) => (items.length === 0 ? 0 : Math.min(i, items.length - 1)))
+  }, [items])
 
   const go = useCallback((delta: number) => {
-    if (animating || items.length <= 1) return
+    if (animating || itemsRef.current.length <= 1) return
     const next = index + delta
-    if (next < 0 || next >= items.length) return
+    if (next < 0 || next >= itemsRef.current.length) return
     setDirection(delta > 0 ? "left" : "right")
     setAnimating(true)
     setTimeout(() => {
-      setIndex(next)
+      // Clamp against latest items in case array changed during animation
+      setIndex(Math.min(next, Math.max(0, itemsRef.current.length - 1)))
       setDirection(null)
       setAnimating(false)
     }, 180)
-  }, [animating, index, items.length])
+  }, [animating, index])
 
   // Keyboard navigation
   useEffect(() => {
@@ -85,7 +88,7 @@ export function VocabularyDeck({
     )
   }
 
-  const safeIndex = Math.min(index, items.length - 1)
+  const safeIndex = items.length > 0 ? Math.max(0, Math.min(index, items.length - 1)) : 0
   const item = items[safeIndex]
   if (!item) return null
 
@@ -103,7 +106,7 @@ export function VocabularyDeck({
             animating && direction === "left" && "-translate-x-4 opacity-0",
             animating && direction === "right" && "translate-x-4 opacity-0",
             !animating && "translate-x-0 opacity-100",
-            item.is_mastered && "opacity-60"
+            item?.is_mastered && "opacity-60"
           )}
         >
           <VocabularyCard
