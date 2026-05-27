@@ -153,7 +153,8 @@ export function LibraryColumn({
 }: LibraryColumnProps) {
   const [localTab, setLocalTab] = useState<"vocabulary" | "tutor" | "tutor-history">("tutor")
   const effectiveTab = activeTab ?? localTab
-  const [vocabDisplayView, setVocabDisplayView] = useState<"list" | "deck">("list")
+  const [vocabDisplayView, setVocabDisplayView] = useState<"list" | "deck">("deck")
+  const [hideMastered, setHideMastered] = useState(false)
 
   const scopeLabel =
     vocabSourceFilter === "tutor"
@@ -259,6 +260,24 @@ export function LibraryColumn({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          {/* Hide mastered toggle */}
+          {masteredCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setHideMastered((v) => !v)}
+              title={hideMastered ? "학습 완료 포함해서 보기" : "학습 완료 숨기기"}
+              className={cn(
+                "flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-all",
+                hideMastered
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border/60 bg-muted/40 text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <EyeOff className="h-3 w-3" />
+              완료 {hideMastered ? "숨김" : `${masteredCount}`}
+            </button>
+          )}
+
           {/* List / Deck view toggle */}
           <div className="flex rounded-lg border border-border/60 bg-muted/40 p-0.5">
             <button
@@ -378,24 +397,30 @@ export function LibraryColumn({
     </div>
   )
 
+  const displayedVocabulary = hideMastered
+    ? filteredVocabulary.filter((v) => !v.is_mastered)
+    : filteredVocabulary
+
   const vocabBody = (
     <div className="min-h-0 flex-1 overflow-hidden">
       {isLoadingVocab ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : filteredVocabulary.length === 0 ? (
+      ) : displayedVocabulary.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
           <BookOpen className="h-8 w-8 opacity-20" />
           <p className="max-w-[22ch] text-sm leading-relaxed text-balance">
-            {vocabSourceFilter === "tutor"
-              ? "Tutor에서 저장한 단어가 없습니다."
-              : "아직 저장된 단어가 없습니다."}
+            {hideMastered && filteredVocabulary.length > 0
+              ? "학습 완료된 단어만 있습니다."
+              : vocabSourceFilter === "tutor"
+                ? "Tutor에서 저장한 단어가 없습니다."
+                : "아직 저장된 단어가 없습니다."}
           </p>
         </div>
       ) : vocabDisplayView === "deck" ? (
         <VocabularyDeck
-          items={filteredVocabulary}
+          items={displayedVocabulary}
           onDelete={onDeleteVocab}
           onToggleMastered={onToggleMastered}
           onTranslate={onTranslate}
@@ -404,8 +429,8 @@ export function LibraryColumn({
         />
       ) : (
         <div className="h-full overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
-          <div className="flex flex-col gap-2 p-2.5 pb-4 sm:p-3 sm:pb-4">
-            {filteredVocabulary.map((item) => (
+          <div className="flex flex-col gap-2 px-4 py-3 pb-4 sm:px-8 md:px-12">
+            {displayedVocabulary.map((item) => (
               <VocabularyCard
                 key={item.id}
                 item={item}
