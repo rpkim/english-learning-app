@@ -6,6 +6,8 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { TranscriptionColumn } from "@/components/transcription-column"
 import { LibraryColumn } from "@/components/library-column"
 import { ConfigDialog } from "@/components/config-dialog"
+import { TutorHistoryPanel } from "@/components/tutor-history-panel"
+import { ConversationHistory } from "@/components/conversation-history"
 import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -68,6 +70,9 @@ import {
   localCreateVocabularyItem,
   localUpdateVocabularyItem,
   localDeleteVocabularyItem,
+  localGetTutorSessions,
+  localSaveTutorSession,
+  localDeleteTutorSession,
 } from "@/lib/local-storage-db"
 
 export function EnglishLearningApp() {
@@ -105,6 +110,7 @@ export function EnglishLearningApp() {
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
   const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "idiom" | "slang">("all")
+  const [vocabSourceFilter, setVocabSourceFilter] = useState<"all" | "session" | "tutor" | "manual">("all")
   const [vocabView, setVocabView] = useState<"items" | "frequency">("items")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
@@ -133,7 +139,9 @@ export function EnglishLearningApp() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
   const isMobile = useIsMobile()
-  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "words" | "sessions" | "tutor">("capture")
+  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "words" | "history" | "tutor">("tutor")
+  const [captureSubTab, setCaptureSubTab] = useState<"record" | "sessions">("record")
+  const [tutorSessions, setTutorSessions] = useState<import("@/lib/types").TutorSession[]>([])
   const { resolvedTheme, setTheme } = useTheme()
 
   // Transcription hook
@@ -203,6 +211,7 @@ export function EnglishLearningApp() {
     setConversations(localGetConversations())
     setConversationGroups(localGetConversationGroups())
     setVocabulary(localGetVocabulary())
+    setTutorSessions(localGetTutorSessions())
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -305,6 +314,7 @@ export function EnglishLearningApp() {
               conversation_id: reuseConversationId,
               word: item.word,
               type: normalizeVocabType(item.type),
+              source: "session",
               definition: item.definition,
               example_sentence: item.example_sentence,
               context: item.context,
@@ -367,6 +377,7 @@ export function EnglishLearningApp() {
             conversation_id: savedConv.id,
             word: item.word,
             type: normalizeVocabType(item.type),
+            source: "session",
             definition: item.definition,
             example_sentence: item.example_sentence,
             context: item.context,
@@ -430,6 +441,7 @@ export function EnglishLearningApp() {
           conversation_id: currentConversationId,
           word: item.word,
           type: normalizeVocabType(item.type),
+          source: "session",
           definition: item.definition,
           example_sentence: item.example_sentence,
           context: item.context,
@@ -500,6 +512,7 @@ export function EnglishLearningApp() {
         conversation_id: currentConversationId,
         word: item.word,
         type: normalizeVocabType(item.type as VocabularyItem["type"]),
+        source: "manual",
         definition: item.definition,
         example_sentence: null,
         context: item.context,
@@ -918,11 +931,18 @@ export function EnglishLearningApp() {
     }
   }, [scopedVocabulary, storageConfig.translationProviderAll])
 
-  const masteredCount = scopedVocabulary.filter((v) => v.is_mastered).length
-  const wordCount = scopedVocabulary.filter((v) => v.type === "word").length
-  const idiomCount = scopedVocabulary.filter((v) => v.type === "idiom").length
-  const slangCount = scopedVocabulary.filter((v) => v.type === "slang").length
-  const filteredVocabulary = scopedVocabulary.filter((item) => {
+  const sourceScopedVocabulary = useMemo(() => {
+    if (vocabSourceFilter === "all") return scopedVocabulary
+    return scopedVocabulary.filter((v) => (v.source ?? "session") === vocabSourceFilter)
+  }, [scopedVocabulary, vocabSourceFilter])
+
+  const tutorVocabCount = useMemo(() => vocabulary.filter((v) => v.source === "tutor").length, [vocabulary])
+
+  const masteredCount = sourceScopedVocabulary.filter((v) => v.is_mastered).length
+  const wordCount = sourceScopedVocabulary.filter((v) => v.type === "word").length
+  const idiomCount = sourceScopedVocabulary.filter((v) => v.type === "idiom").length
+  const slangCount = sourceScopedVocabulary.filter((v) => v.type === "slang").length
+  const filteredVocabulary = sourceScopedVocabulary.filter((item) => {
     if (vocabFilter === "all") return true
     if (vocabFilter === "word") return item.type === "word"
     if (vocabFilter === "idiom") return item.type === "idiom"
@@ -1004,6 +1024,7 @@ export function EnglishLearningApp() {
         conversation_id: targetConversationId,
         word,
         type: "word",
+        source: "session",
         definition: "Frequent word from selected sessions.",
         example_sentence: null,
         context: null,
@@ -1016,6 +1037,44 @@ export function EnglishLearningApp() {
       toast.error(msg)
     }
   }, [vocabulary, selectedConversationId])
+
+  const handleSaveTutorSession = useCallback((messages: import("@/lib/types").TutorChatMessage[]) => {
+    const saved = localSaveTutorSession(messages)
+    setTutorSessions((prev) => [saved, ...prev])
+  }, [])
+
+  const handleDeleteTutorSession = useCallback((id: string) => {
+    localDeleteTutorSession(id)
+    setTutorSessions((prev) => prev.filter((s) => s.id !== id))
+  }, [])
+
+  const handleAddVocabularyFromTutor = useCallback(
+    (payload: { word: string; type: VocabularyItem["type"]; definition?: string; context?: string }) => {
+      const already = vocabulary.some((v) => v.word.toLowerCase() === payload.word.toLowerCase())
+      if (already) {
+        toast.info(`"${payload.word}" is already in vocabulary`)
+        return
+      }
+      try {
+        const saved = localCreateVocabularyItem({
+          conversation_id: null,
+          word: payload.word,
+          type: payload.type,
+          source: "tutor",
+          definition: payload.definition ?? null,
+          example_sentence: null,
+          context: payload.context ?? null,
+          korean_translation: null,
+        })
+        setVocabulary((prev) => [saved, ...prev])
+        toast.success(`"${saved.word}" added to vocabulary`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error"
+        toast.error(msg)
+      }
+    },
+    [vocabulary]
+  )
 
   const handleExportCsv = useCallback(() => {
     if (filteredVocabulary.length === 0) {
@@ -1289,20 +1348,15 @@ export function EnglishLearningApp() {
     />
   )
 
-  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "words" | "sessions" | "tutor") => (
+  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "vocabulary" | "history" | "tutor" | "tutor-history") => (
     <LibraryColumn
       variant={soloMobile ? "solo" : "split"}
       onCollapseRight={soloMobile ? undefined : collapseRightPanel}
       leftCollapsed={leftCollapsed}
       onExpandLeft={soloMobile ? undefined : expandLeftPanel}
-      activeTab={
-        mobileActiveTab === "words" ? "vocabulary"
-        : mobileActiveTab === "sessions" ? "history"
-        : mobileActiveTab === "tutor" ? "tutor"
-        : undefined
-      }
+      activeTab={mobileActiveTab}
       hideTabs={soloMobile}
-      scopedVocabulary={scopedVocabulary}
+      scopedVocabulary={sourceScopedVocabulary}
       conversations={conversations}
       conversationGroups={conversationGroups}
       selectedGroupId={selectedGroupId}
@@ -1322,6 +1376,15 @@ export function EnglishLearningApp() {
       setVocabView={setVocabView}
       vocabFilter={vocabFilter}
       setVocabFilter={setVocabFilter}
+      vocabSourceFilter={vocabSourceFilter}
+      setVocabSourceFilter={(f) => {
+        setVocabSourceFilter(f)
+        if (f !== "all") {
+          setSelectedConversationId(null)
+          setSelectedGroupId(null)
+        }
+      }}
+      tutorVocabCount={tutorVocabCount}
       wordCount={wordCount}
       idiomCount={idiomCount}
       slangCount={slangCount}
@@ -1333,6 +1396,8 @@ export function EnglishLearningApp() {
       masteredCount={masteredCount}
       onShowAllVocabulary={() => {
         setSelectedConversationId(null)
+        setSelectedGroupId(null)
+        setVocabSourceFilter("all")
         setVocabulary(localGetVocabulary())
       }}
       onExportCsv={handleExportCsv}
@@ -1349,6 +1414,10 @@ export function EnglishLearningApp() {
       onAddFrequentWord={handleAddFrequentWord}
       onExcludeTopWord={handleExcludeTopWord}
       tutorTranscriptContext={`${transcript} ${interimTranscript}`.trim().slice(0, 12000)}
+      onAddVocabularyFromTutor={handleAddVocabularyFromTutor}
+      onSaveTutorSession={handleSaveTutorSession}
+      tutorSessions={tutorSessions}
+      onDeleteTutorSession={handleDeleteTutorSession}
     />
   )
 
@@ -1542,17 +1611,74 @@ export function EnglishLearningApp() {
             )}
 
             {/* Content panels — always mounted, CSS show/hide preserves state */}
+            {/* Capture panel: sub-tabs [Record | Sessions] */}
             <div
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
               style={{ display: mobileMainTab === "capture" ? "flex" : "none" }}
             >
-              {renderTranscription("flex-1 min-h-0")}
+              {/* Sub-tab bar */}
+              <div className="flex shrink-0 gap-0 border-b border-border bg-card px-3">
+                {(["record", "sessions"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setCaptureSubTab(tab)}
+                    className={cn(
+                      "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors",
+                      captureSubTab === tab
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab === "record" ? "녹음" : "세션"}
+                    {tab === "sessions" && conversations.length > 0 && (
+                      <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] tabular-nums">{conversations.length}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {/* Sub-tab content */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: captureSubTab === "record" ? "flex" : "none" }}>
+                {renderTranscription("flex-1 min-h-0")}
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-16" style={{ display: captureSubTab === "sessions" ? "flex" : "none" }}>
+                <ConversationHistory
+                  conversations={conversations}
+                  groups={conversationGroups}
+                  selectedGroupId={selectedGroupId}
+                  selectedId={selectedConversationId}
+                  onSelect={handleSelectConversation}
+                  onRename={handleRenameConversation}
+                  onDelete={handleDeleteConversation}
+                  onCreateGroup={handleCreateGroup}
+                  onRenameGroup={handleRenameGroup}
+                  onDeleteGroup={handleDeleteGroup}
+                  onArchiveGroup={handleArchiveGroup}
+                  onRestoreGroup={handleRestoreGroup}
+                  onSelectGroup={handleSelectGroup}
+                  onMoveConversationToGroup={handleMoveConversationToGroup}
+                  workspaceStats={workspaceStats}
+                />
+              </div>
             </div>
+
+            {/* Words / Tutor panel */}
             <div
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
-              style={{ display: mobileMainTab !== "capture" ? "flex" : "none" }}
+              style={{ display: mobileMainTab === "words" || mobileMainTab === "tutor" ? "flex" : "none" }}
             >
-              {renderLibrary(true, mobileMainTab !== "capture" ? mobileMainTab : "words")}
+              {renderLibrary(true, mobileMainTab === "words" ? "vocabulary" : mobileMainTab === "tutor" ? "tutor" : undefined)}
+            </div>
+
+            {/* Tutor History panel */}
+            <div
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+              style={{ display: mobileMainTab === "history" ? "flex" : "none" }}
+            >
+              <TutorHistoryPanel
+                sessions={tutorSessions}
+                onDeleteSession={handleDeleteTutorSession}
+                hidePaddingBottom
+              />
             </div>
 
             {/* Bottom navigation */}
@@ -1563,18 +1689,18 @@ export function EnglishLearningApp() {
               <div className="grid h-14 grid-cols-4">
                 {(
                   [
+                    { value: "tutor" as const, icon: MessageCircle, label: "Tutor" },
                     { value: "capture" as const, icon: Mic, label: "Capture" },
                     { value: "words" as const, icon: BookOpen, label: "Words" },
-                    { value: "sessions" as const, icon: History, label: "Sessions" },
-                    { value: "tutor" as const, icon: MessageCircle, label: "Tutor" },
+                    { value: "history" as const, icon: History, label: "History" },
                   ] as const
                 ).map(({ value, icon: Icon, label }) => {
                   const isActive = mobileMainTab === value
                   const badgeCount =
                     value === "words" && !isActive && vocabulary.length > 0
                       ? vocabulary.length
-                      : value === "sessions" && !isActive && conversations.length > 0
-                        ? conversations.length
+                      : value === "history" && !isActive && tutorSessions.length > 0
+                        ? tutorSessions.length
                         : null
                   return (
                     <button
