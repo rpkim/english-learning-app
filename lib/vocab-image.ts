@@ -288,12 +288,30 @@ export function downloadVocabImage(item: VocabularyItem): void {
   ctx.textAlign = "left"
 
   // ── Download ──────────────────────────────────────────────────────────────
-  canvas.toBlob((blob) => {
+  const filename = `${item.word.replace(/[^a-zA-Z0-9가-힣\-_]/g, "-")}.png`
+
+  canvas.toBlob(async (blob) => {
     if (!blob) return
+
+    // iOS Safari: use Web Share API so "Save Image" option appears
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    if (isIOS && navigator.canShare) {
+      const file = new File([blob], filename, { type: "image/png" })
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: item.word })
+          return
+        } catch {
+          // User cancelled share sheet — fall through to regular download
+        }
+      }
+    }
+
+    // Desktop / Android: anchor download
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${item.word.replace(/[^a-zA-Z0-9가-힣\-_]/g, "-")}.png`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
