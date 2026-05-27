@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import { VocabularyItem } from "@/lib/types"
-import { CheckCircle2, Circle, Trash2, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe } from "lucide-react"
+import { CheckCircle2, Circle, Trash2, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe, ImageDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTts } from "@/hooks/use-tts"
 import { Button } from "@/components/ui/button"
+import { downloadVocabImage } from "@/lib/vocab-image"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 export const TYPE_COLORS: Record<string, string> = {
@@ -270,6 +271,17 @@ export function VocabularyCard({
             ? <CheckCircle2 className="h-3.5 w-3.5" />
             : <Circle className="h-3.5 w-3.5" />}
           {item.is_mastered ? "학습 완료" : "완료 표시"}
+        </button>
+
+        {/* Download as Instagram image */}
+        <button
+          type="button"
+          onClick={() => downloadVocabImage(item)}
+          title="Instagram 이미지로 저장 (1080×1350)"
+          className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+        >
+          <ImageDown className="h-3 w-3" />
+          이미지
         </button>
 
         <button
