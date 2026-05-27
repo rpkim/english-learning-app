@@ -1,0 +1,223 @@
+/**
+ * Supabase database layer — async equivalents of local-storage-db functions.
+ * All functions require an authenticated user (RLS enforced server-side).
+ */
+import { getSupabaseClient } from "@/lib/supabase-client"
+import type { Conversation, ConversationGroup, VocabularyItem, TutorSession, TutorChatMessage } from "@/lib/types"
+
+// ── Conversations ──────────────────────────────────────────────────────────
+
+export async function dbGetConversations(): Promise<Conversation[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("conversations")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) { console.error("[db] conversations:", error.message, error.code); return [] }
+  return (data ?? []) as Conversation[]
+}
+
+export async function dbCreateConversation(
+  title: string,
+  transcript: string,
+  durationSeconds: number
+): Promise<Conversation> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data, error } = await sb
+    .from("conversations")
+    .insert({ user_id: user.id, title, transcript, duration_seconds: durationSeconds })
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as Conversation
+}
+
+export async function dbUpdateConversation(
+  id: string,
+  fields: Partial<Pick<Conversation, "title" | "transcript" | "duration_seconds">>
+): Promise<Conversation> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("conversations")
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as Conversation
+}
+
+export async function dbDeleteConversation(id: string): Promise<void> {
+  const sb = getSupabaseClient()
+  const { error } = await sb.from("conversations").delete().eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+// ── Conversation Groups ────────────────────────────────────────────────────
+
+export async function dbGetConversationGroups(): Promise<ConversationGroup[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("conversation_groups")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) { console.error("[db] conversation_groups:", error.message, error.code); return [] }
+  return (data ?? []) as ConversationGroup[]
+}
+
+export async function dbCreateConversationGroup(name: string): Promise<ConversationGroup> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data, error } = await sb
+    .from("conversation_groups")
+    .insert({ user_id: user.id, name, conversation_ids: [] })
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as ConversationGroup
+}
+
+export async function dbUpdateConversationGroup(
+  id: string,
+  fields: Partial<Pick<ConversationGroup, "name" | "conversation_ids" | "archived_at">>
+): Promise<ConversationGroup> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("conversation_groups")
+    .update(fields)
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as ConversationGroup
+}
+
+export async function dbMoveConversationToGroup(
+  conversationId: string,
+  groupId: string | null
+): Promise<ConversationGroup[]> {
+  const groups = await dbGetConversationGroups()
+  // Remove from any group that has it
+  await Promise.all(
+    groups
+      .filter((g) => g.conversation_ids.includes(conversationId))
+      .map((g) =>
+        dbUpdateConversationGroup(g.id, {
+          conversation_ids: g.conversation_ids.filter((id) => id !== conversationId),
+        })
+      )
+  )
+  // Add to target group
+  if (groupId) {
+    const target = groups.find((g) => g.id === groupId)
+    if (target && !target.conversation_ids.includes(conversationId)) {
+      await dbUpdateConversationGroup(groupId, {
+        conversation_ids: [...target.conversation_ids, conversationId],
+      })
+    }
+  }
+  return dbGetConversationGroups()
+}
+
+export async function dbDeleteConversationGroup(id: string): Promise<void> {
+  const sb = getSupabaseClient()
+  const { error } = await sb.from("conversation_groups").delete().eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+// ── Vocabulary Items ───────────────────────────────────────────────────────
+
+export async function dbGetVocabularyItems(): Promise<VocabularyItem[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("vocabulary_items")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) { console.error("[db] vocabulary_items:", error.message, error.code); return [] }
+  return (data ?? []) as VocabularyItem[]
+}
+
+export async function dbCreateVocabularyItem(
+  item: Omit<VocabularyItem, "id" | "created_at">
+): Promise<VocabularyItem> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data, error } = await sb
+    .from("vocabulary_items")
+    .insert({ ...item, user_id: user.id })
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as VocabularyItem
+}
+
+export async function dbGetVocabularyByConversation(conversationId: string): Promise<VocabularyItem[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("vocabulary_items")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return (data ?? []) as VocabularyItem[]
+}
+
+export async function dbUpdateVocabularyItem(
+  id: string,
+  fields: Partial<VocabularyItem>
+): Promise<VocabularyItem> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("vocabulary_items")
+    .update(fields)
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as VocabularyItem
+}
+
+export async function dbDeleteVocabularyItem(id: string): Promise<void> {
+  const sb = getSupabaseClient()
+  const { error } = await sb.from("vocabulary_items").delete().eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+// ── Tutor Sessions ─────────────────────────────────────────────────────────
+
+export async function dbGetTutorSessions(): Promise<TutorSession[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("tutor_sessions")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) { console.error("[db] tutor_sessions:", error.message, error.code); return [] }
+  return (data ?? []) as TutorSession[]
+}
+
+export async function dbSaveTutorSession(messages: TutorChatMessage[]): Promise<TutorSession> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  const firstUserMsg = messages.find((m) => m.role === "user")?.content ?? ""
+  const title = firstUserMsg.slice(0, 60) || "Tutor 대화"
+
+  const { data, error } = await sb
+    .from("tutor_sessions")
+    .insert({ user_id: user.id, title, messages })
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as TutorSession
+}
+
+export async function dbDeleteTutorSession(id: string): Promise<void> {
+  const sb = getSupabaseClient()
+  const { error } = await sb.from("tutor_sessions").delete().eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}

@@ -41,7 +41,7 @@ export interface LibraryColumnProps {
   leftCollapsed?: boolean
   onExpandLeft?: () => void
   /** Externally controlled active tab (for mobile bottom nav) */
-  activeTab?: "vocabulary" | "history" | "tutor" | "tutor-history"
+  activeTab?: "vocabulary" | "tutor" | "tutor-history"
   /** Hide the inner tab bar (when bottom nav handles navigation) */
   hideTabs?: boolean
   scopedVocabulary: VocabularyItem[]
@@ -151,7 +151,7 @@ export function LibraryColumn({
   setVocabSourceFilter,
   tutorVocabCount,
 }: LibraryColumnProps) {
-  const [localTab, setLocalTab] = useState<"vocabulary" | "history" | "tutor" | "tutor-history">("tutor")
+  const [localTab, setLocalTab] = useState<"vocabulary" | "tutor" | "tutor-history">("tutor")
   const effectiveTab = activeTab ?? localTab
   const [vocabDisplayView, setVocabDisplayView] = useState<"list" | "deck">("list")
 
@@ -201,7 +201,14 @@ export function LibraryColumn({
         </div>
       )}
 
-      <TabsList className="grid h-auto w-full grid-cols-4 gap-0.5 rounded-xl bg-muted/50 p-1">
+      <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5 rounded-xl bg-muted/50 p-1">
+        <TabsTrigger
+          value="tutor"
+          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
+        >
+          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Tutor</span>
+        </TabsTrigger>
         <TabsTrigger
           value="vocabulary"
           className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
@@ -216,28 +223,6 @@ export function LibraryColumn({
               {scopedVocabulary.length}
             </Badge>
           )}
-        </TabsTrigger>
-        <TabsTrigger
-          value="history"
-          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
-        >
-          <History className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">Sessions</span>
-          {conversations.length > 0 && (
-            <Badge
-              variant="secondary"
-              className="h-4 min-w-4 rounded-full px-1 text-[9px] leading-none sm:text-[10px]"
-            >
-              {conversations.length}
-            </Badge>
-          )}
-        </TabsTrigger>
-        <TabsTrigger
-          value="tutor"
-          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
-        >
-          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">Tutor</span>
         </TabsTrigger>
         <TabsTrigger
           value="tutor-history"
@@ -470,7 +455,7 @@ export function LibraryColumn({
       <Tabs
         value={effectiveTab}
         onValueChange={(v) => {
-          if (!activeTab) setLocalTab(v as "vocabulary" | "history" | "tutor" | "tutor-history")
+          if (!activeTab) setLocalTab(v as "vocabulary" | "tutor" | "tutor-history")
         }}
         className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
@@ -478,9 +463,6 @@ export function LibraryColumn({
         <TabsContent value="vocabulary" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
           {vocabToolbar}
           {vocabBody}
-        </TabsContent>
-        <TabsContent value="history" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-          {historyBody}
         </TabsContent>
         <TabsContent value="tutor" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
           <TutorChatPanel

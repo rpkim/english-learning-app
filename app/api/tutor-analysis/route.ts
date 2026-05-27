@@ -3,6 +3,40 @@ import { NextResponse } from "next/server"
 import { GEMINI_MODEL } from "@/lib/storage-config"
 import type { TutorSession } from "@/lib/types"
 
+// ── Types returned to the client ──────────────────────────────────────────
+
+export interface WordRec {
+  word: string
+  ko: string
+  level: string
+  reason: string
+}
+
+export interface SentenceRec {
+  en: string
+  ko_hint: string
+  level: string
+}
+
+export interface GrammarRec {
+  area: string
+  tip: string
+}
+
+export interface AnalysisSection<T> {
+  count: number          // how many sessions of this type
+  insight: string        // short Korean insight sentence
+  items: T[]
+}
+
+export interface TutorAnalysisResult {
+  meaning:    AnalysisSection<WordRec>
+  translate:  AnalysisSection<SentenceRec>
+  naturalize: AnalysisSection<GrammarRec>
+}
+
+// ── Route ──────────────────────────────────────────────────────────────────
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
@@ -17,39 +51,109 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 503 })
     }
 
-    // Build a compact transcript of all user questions
-    const userMessages = sessions
-      .flatMap((s) => s.messages.filter((m) => m.role === "user").map((m) => m.content.trim()))
-      .filter(Boolean)
-      .slice(0, 80) // cap to avoid token overflow
-
-    if (userMessages.length === 0) {
-      return NextResponse.json({ error: "No user messages found" }, { status: 400 })
+    // ── Classify each session by lookup type ──────────────────────────────
+    const byType: Record<"meaning" | "translate" | "naturalize", string[]> = {
+      meaning: [],
+      translate: [],
+      naturalize: [],
     }
 
-    const prompt = `You are an English learning coach analyzing a Korean learner's tutor chat history.
+    for (const session of sessions) {
+      // The assistant's first message is JSON.stringify(LookupResult) which has a `type` field
+      const assistantMsg = session.messages.find((m) => m.role === "assistant")
+      let lookupType: "meaning" | "translate" | "naturalize" | null = null
+      if (assistantMsg) {
+        try {
+          const parsed = JSON.parse(assistantMsg.content) as { type?: string }
+          if (parsed.type === "meaning" || parsed.type === "translate" || parsed.type === "naturalize") {
+            lookupType = parsed.type
+          }
+        } catch {
+          // assistant content is plain text — try to infer from user message
+        }
+      }
+      // Fallback: derive from title/first user message
+      if (!lookupType) {
+        const title = session.title.toLowerCase()
+        if (title.includes("번역") || title.includes("translate")) lookupType = "translate"
+        else if (title.includes("자연") || title.includes("natural")) lookupType = "naturalize"
+        else lookupType = "meaning"
+      }
 
-The learner asked the following questions/requests (most recent first):
-${userMessages.map((m, i) => `${i + 1}. ${m}`).join("\n")}
+      const userQuery = session.messages.find((m) => m.role === "user")?.content.trim() ?? ""
+      if (userQuery) byType[lookupType].push(userQuery)
+    }
 
-Based on these, provide a concise learning analysis in Korean with the following sections:
+    // ── Build prompt ──────────────────────────────────────────────────────
+    const meaningList  = byType.meaning.slice(0, 30).map((q, i) => `${i + 1}. ${q}`).join("\n") || "(없음)"
+    const translateList = byType.translate.slice(0, 20).map((q, i) => `${i + 1}. ${q}`).join("\n") || "(없음)"
+    const naturalizeList = byType.naturalize.slice(0, 20).map((q, i) => `${i + 1}. ${q}`).join("\n") || "(없음)"
 
-1. **주요 질문 패턴** (2–3문장): 어떤 종류의 질문을 가장 많이 했는지 (뜻 묻기, 번역, 표현 다듬기, 문법 등)
+    const prompt = `You are an English learning coach. Analyze a Korean learner's tutor history and return ONLY a JSON object (no markdown fences).
 
-2. **자주 다루는 주제** (bullet 3–5개): 어떤 주제나 상황의 영어가 자주 등장하는지
+=== 뜻이 뭐야? (단어/표현 의미 검색) ===
+${meaningList}
 
-3. **학습 추천** (bullet 3개): 이 패턴을 바탕으로 집중적으로 공부하면 좋을 구체적인 영역이나 방법
+=== 번역해줘 (문장 번역 요청) ===
+${translateList}
 
-4. **한 줄 요약**: 이 학습자의 현재 영어 학습 스타일을 한 문장으로 표현
+=== 더 자연스럽게 (표현 교정 요청) ===
+${naturalizeList}
 
-짧고 실용적으로 작성해 주세요.`
+Return this exact JSON structure:
+{
+  "meaning": {
+    "count": <number of items in the meaning list>,
+    "insight": "<Korean: 1–2 sentence insight about vocabulary level/topics>",
+    "items": [
+      { "word": "<English word>", "ko": "<Korean meaning>", "level": "<A2|B1|B2|C1>", "reason": "<Korean: why this word is good to learn next>" }
+    ]
+  },
+  "translate": {
+    "count": <number of items in the translate list>,
+    "insight": "<Korean: insight about translation patterns>",
+    "items": [
+      { "en": "<English practice sentence>", "ko_hint": "<Korean translation hint>", "level": "<A2|B1|B2|C1>" }
+    ]
+  },
+  "naturalize": {
+    "count": <number of items in the naturalize list>,
+    "insight": "<Korean: insight about recurring grammar/expression issues>",
+    "items": [
+      { "area": "<Korean grammar/expression area>", "tip": "<Korean practical improvement tip>" }
+    ]
+  }
+}
+
+Rules:
+- For meaning.items: recommend 4–6 NEW words/expressions at a SIMILAR or SLIGHTLY higher level to what was searched. Do not repeat searched words.
+- For translate.items: provide 4–5 NEW practice sentences at similar complexity to the translated ones. Include natural, useful everyday sentences.
+- For naturalize.items: list 3–5 specific grammar/expression patterns that the learner should focus on based on the errors in their correction requests. Be specific (e.g. "관사 the 사용" not just "문법").
+- If a section has "(없음)" data, return count: 0, empty items array, and insight saying "아직 해당 기록이 없습니다."
+- All insight and tip fields must be in Korean. word/en/area fields may be English.
+- Output ONLY the JSON object, no explanation.`
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      generationConfig: { responseMimeType: "application/json" },
+    })
     const result = await model.generateContent(prompt)
-    const analysis = result.response.text().trim()
+    const raw = result.response.text().trim()
 
-    return NextResponse.json({ analysis })
+    let analysis: TutorAnalysisResult
+    try {
+      analysis = JSON.parse(raw) as TutorAnalysisResult
+    } catch {
+      return NextResponse.json({ error: "AI 응답을 파싱할 수 없습니다." }, { status: 500 })
+    }
+
+    // Ensure counts reflect actual session data
+    analysis.meaning.count = byType.meaning.length
+    analysis.translate.count = byType.translate.length
+    analysis.naturalize.count = byType.naturalize.length
+
+    return NextResponse.json(analysis)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error"
     return NextResponse.json({ error: msg }, { status: 500 })

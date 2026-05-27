@@ -1,0 +1,68 @@
+-- ============================================================
+-- SurviveEnglish — Supabase Schema
+-- Run this in your Supabase project: SQL Editor → New query
+-- ============================================================
+
+-- Conversations
+create table if not exists public.conversations (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null,
+  transcript text not null default '',
+  duration_seconds integer not null default 0,
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
+);
+
+-- Conversation groups (folders)
+create table if not exists public.conversation_groups (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  name text not null,
+  conversation_ids text[] default '{}',
+  created_at timestamptz default now() not null,
+  archived_at timestamptz
+);
+
+-- Vocabulary items
+create table if not exists public.vocabulary_items (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  conversation_id uuid references public.conversations(id) on delete set null,
+  word text not null,
+  type text not null default 'word',
+  source text,
+  definition text,
+  example_sentence text,
+  korean_translation text,
+  context text,
+  is_mastered boolean not null default false,
+  created_at timestamptz default now() not null
+);
+
+-- Tutor sessions
+create table if not exists public.tutor_sessions (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null,
+  messages jsonb not null default '[]',
+  created_at timestamptz default now() not null
+);
+
+-- ── Row Level Security ─────────────────────────────────────────────────────
+alter table public.conversations enable row level security;
+alter table public.conversation_groups enable row level security;
+alter table public.vocabulary_items enable row level security;
+alter table public.tutor_sessions enable row level security;
+
+create policy "own conversations" on public.conversations
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own groups" on public.conversation_groups
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own vocabulary" on public.vocabulary_items
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own tutor sessions" on public.tutor_sessions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

@@ -54,26 +54,27 @@ import { cn } from "@/lib/utils"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { getStorageConfig, saveStorageConfig, StorageConfig, localAsrModelShortLabel } from "@/lib/storage-config"
 import {
-  localGetConversations,
-  localCreateConversation,
-  localUpdateConversationTitle,
-  localUpdateConversationTranscript,
-  localDeleteConversation,
-  localGetConversationGroups,
-  localCreateConversationGroup,
-  localUpdateConversationGroupName,
-  localDeleteConversationGroup,
-  localArchiveConversationGroup,
-  localRestoreConversationGroup,
-  localMoveConversationToGroup,
-  localGetVocabulary,
-  localCreateVocabularyItem,
-  localUpdateVocabularyItem,
-  localDeleteVocabularyItem,
-  localGetTutorSessions,
-  localSaveTutorSession,
-  localDeleteTutorSession,
-} from "@/lib/local-storage-db"
+  dbGetConversations,
+  dbCreateConversation,
+  dbUpdateConversation,
+  dbDeleteConversation,
+  dbGetConversationGroups,
+  dbCreateConversationGroup,
+  dbUpdateConversationGroup,
+  dbDeleteConversationGroup,
+  dbMoveConversationToGroup,
+  dbGetVocabularyItems,
+  dbGetVocabularyByConversation,
+  dbCreateVocabularyItem,
+  dbUpdateVocabularyItem,
+  dbDeleteVocabularyItem,
+  dbGetTutorSessions,
+  dbSaveTutorSession,
+  dbDeleteTutorSession,
+} from "@/lib/db"
+import { getSupabaseClient } from "@/lib/supabase-client"
+import { LoginScreen } from "@/components/login-screen"
+import type { User } from "@supabase/supabase-js"
 
 export function EnglishLearningApp() {
   const UNLOCK_SESSION_KEY = "surviveenglish_app_unlocked"
@@ -82,10 +83,7 @@ export function EnglishLearningApp() {
   const [storageConfig, setStorageConfig] = useState<StorageConfig>(() => getStorageConfig())
   const [showConfig, setShowConfig] = useState(false)
   const [isAuthReady, setIsAuthReady] = useState(false)
-  const [isUnlocked, setIsUnlocked] = useState(false)
-  const [unlockPassword, setUnlockPassword] = useState("")
-  const [isUnlocking, setIsUnlocking] = useState(false)
-  const [unlockError, setUnlockError] = useState<string | null>(null)
+  const [user, setUser] = useState<User | null>(null)
 
   // Transcription state
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
@@ -132,15 +130,17 @@ export function EnglishLearningApp() {
   const [conversationGroups, setConversationGroups] = useState<ConversationGroup[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
-  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [leftCollapsed, setLeftCollapsed] = useState(true)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [leftPanelWidthPct, setLeftPanelWidthPct] = useState(58)
+  const [leftPanelWidthPct, setLeftPanelWidthPct] = useState(32)
   const [isDesktop, setIsDesktop] = useState(false)
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
   const isMobile = useIsMobile()
   const [mobileMainTab, setMobileMainTab] = useState<"capture" | "words" | "history" | "tutor">("tutor")
   const [captureSubTab, setCaptureSubTab] = useState<"record" | "sessions">("record")
+  const [desktopCaptureSubTab, setDesktopCaptureSubTab] = useState<"record" | "captures">("record")
+  const [desktopMainTab, setDesktopMainTab] = useState<"tutor" | "capture" | "words" | "history">("tutor")
   const [tutorSessions, setTutorSessions] = useState<import("@/lib/types").TutorSession[]>([])
   const { resolvedTheme, setTheme } = useTheme()
 
@@ -151,69 +151,45 @@ export function EnglishLearningApp() {
       localAsrModel: storageConfig.localAsrModel,
     })
 
+  // Supabase auth — listen for session changes
   useEffect(() => {
-    let cancelled = false
-    const initAuth = async () => {
-      if (typeof window === "undefined") return
-      try {
-        const res = await fetch("/api/auth/unlock", { method: "GET" })
-        const data = await res.json().catch(() => ({}))
-        const enabled = data?.enabled === true
-        if (cancelled) return
-        if (!enabled) {
-          setIsUnlocked(true)
-          setIsAuthReady(true)
-          return
-        }
-      } catch {
-        // If status check fails, fall back to lock screen behavior.
-      }
-
-      if (cancelled) return
-      const unlocked = window.sessionStorage.getItem(UNLOCK_SESSION_KEY) === "true"
-      setIsUnlocked(unlocked)
+    const sb = getSupabaseClient()
+    sb.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
       setIsAuthReady(true)
-    }
-    void initAuth()
-    return () => {
-      cancelled = true
-    }
+    })
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
-  const handleUnlock = useCallback(async () => {
-    setUnlockError(null)
-    setIsUnlocking(true)
-    try {
-      const res = await fetch("/api/auth/unlock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: unlockPassword }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || data?.ok !== true) {
-        setUnlockError(typeof data?.error === "string" ? data.error : "Failed to unlock")
-        return
-      }
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(UNLOCK_SESSION_KEY, "true")
-      }
-      setIsUnlocked(true)
-      setUnlockPassword("")
-    } catch {
-      setUnlockError("Failed to unlock")
-    } finally {
-      setIsUnlocking(false)
-    }
-  }, [unlockPassword])
+  const handleSignOut = useCallback(async () => {
+    await getSupabaseClient().auth.signOut()
+  }, [])
 
-  // Load initial data
+  // Load data from Supabase when user is authenticated
   useEffect(() => {
-    setConversations(localGetConversations())
-    setConversationGroups(localGetConversationGroups())
-    setVocabulary(localGetVocabulary())
-    setTutorSessions(localGetTutorSessions())
+    if (!user) return
+    const load = async () => {
+      try {
+        const [convs, groups, vocab, sessions] = await Promise.all([
+          dbGetConversations(),
+          dbGetConversationGroups(),
+          dbGetVocabularyItems(),
+          dbGetTutorSessions(),
+        ])
+        setConversations(convs)
+        setConversationGroups(groups)
+        setVocabulary(vocab)
+        setTutorSessions(sessions)
+      } catch (err) {
+        console.error("Failed to load data:", err)
+      }
+    }
+    void load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -225,11 +201,16 @@ export function EnglishLearningApp() {
     } catch {}
   }, [])
 
-  function fetchVocabulary(conversationId?: string) {
+  const fetchVocabulary = useCallback(async (conversationId?: string) => {
     setIsLoadingVocab(true)
-    setVocabulary(localGetVocabulary(conversationId))
-    setIsLoadingVocab(false)
-  }
+    try {
+      const items = conversationId
+        ? await dbGetVocabularyByConversation(conversationId)
+        : await dbGetVocabularyItems()
+      setVocabulary(items)
+    } catch (err) { console.error(err) }
+    finally { setIsLoadingVocab(false) }
+  }, [])
 
   // Handle text selection from transcript for manual save
   const handleTextSelect = useCallback((text: string) => {
@@ -275,9 +256,9 @@ export function EnglishLearningApp() {
     if (isReextract && reuseConversationId) {
       setIsExtracting(true)
       try {
-        const updated = localUpdateConversationTranscript(reuseConversationId, transcript)
+        const updated = await dbUpdateConversation(reuseConversationId, { transcript })
         if (!updated) throw new Error("Failed to update session")
-        setConversations(localGetConversations())
+        setConversations((prev) => prev.map((c) => c.id === updated.id ? updated : c))
 
         const extractRes = await fetch("/api/extract", {
           method: "POST",
@@ -309,17 +290,20 @@ export function EnglishLearningApp() {
               : "All extracted items are already in this session. Try editing the transcript, then extract again."
           )
         } else {
-          const saved = freshItems.map((item) =>
-            localCreateVocabularyItem({
-              conversation_id: reuseConversationId,
-              word: item.word,
-              type: normalizeVocabType(item.type),
-              source: "session",
-              definition: item.definition,
-              example_sentence: item.example_sentence,
-              context: item.context,
-              korean_translation: null,
-            })
+          const saved = await Promise.all(
+            freshItems.map((item) =>
+              dbCreateVocabularyItem({
+                conversation_id: reuseConversationId,
+                word: item.word,
+                type: normalizeVocabType(item.type),
+                source: "session",
+                definition: item.definition,
+                example_sentence: item.example_sentence,
+                context: item.context,
+                korean_translation: null,
+                is_mastered: false,
+              })
+            )
           )
           setVocabulary((prev) => [...saved, ...prev])
           toast.success(`Added ${saved.length} new vocabulary item${saved.length !== 1 ? "s" : ""}!`)
@@ -344,7 +328,7 @@ export function EnglishLearningApp() {
       const sessionTitle = `Session — ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
 
       // 1) Save conversation
-      const savedConv = localCreateConversation(sessionTitle, transcript, duration)
+      const savedConv = await dbCreateConversation(sessionTitle, transcript, duration)
       setConversations((prev) => [savedConv, ...prev])
       setCurrentConversationId(savedConv.id)
       toast.success("Session saved!")
@@ -372,17 +356,20 @@ export function EnglishLearningApp() {
         toast.info("No new vocabulary items found in this transcript.")
       } else {
         // 3) Save each extracted item
-        const saved = items.map((item) =>
-          localCreateVocabularyItem({
-            conversation_id: savedConv.id,
-            word: item.word,
-            type: normalizeVocabType(item.type),
-            source: "session",
-            definition: item.definition,
-            example_sentence: item.example_sentence,
-            context: item.context,
-            korean_translation: null,
-          })
+        const saved = await Promise.all(
+          items.map((item) =>
+            dbCreateVocabularyItem({
+              conversation_id: savedConv.id,
+              word: item.word,
+              type: normalizeVocabType(item.type),
+              source: "session",
+              definition: item.definition,
+              example_sentence: item.example_sentence,
+              context: item.context,
+              korean_translation: null,
+              is_mastered: false,
+            })
+          )
         )
         setVocabulary((prev) => [...saved, ...prev])
         toast.success(`Extracted ${items.length} vocabulary item${items.length !== 1 ? "s" : ""}!`)
@@ -436,17 +423,20 @@ export function EnglishLearningApp() {
         )
         return
       }
-      const saved = freshItems.map((item) =>
-        localCreateVocabularyItem({
-          conversation_id: currentConversationId,
-          word: item.word,
-          type: normalizeVocabType(item.type),
-          source: "session",
-          definition: item.definition,
-          example_sentence: item.example_sentence,
-          context: item.context,
-          korean_translation: null,
-        })
+      const saved = await Promise.all(
+        freshItems.map((item) =>
+          dbCreateVocabularyItem({
+            conversation_id: currentConversationId,
+            word: item.word,
+            type: normalizeVocabType(item.type),
+            source: "session",
+            definition: item.definition,
+            example_sentence: item.example_sentence,
+            context: item.context,
+            korean_translation: null,
+            is_mastered: false,
+          })
+        )
       )
       setVocabulary((prev) => [...saved, ...prev])
       toast.success(`Added ${saved.length} new vocabulary item${saved.length !== 1 ? "s" : ""}!`)
@@ -508,7 +498,7 @@ export function EnglishLearningApp() {
     async (item: { word: string; type: string; definition: string; context: string }) => {
       setIsSubmittingManual(true)
       try {
-      const saved = localCreateVocabularyItem({
+      const saved = await dbCreateVocabularyItem({
         conversation_id: currentConversationId,
         word: item.word,
         type: normalizeVocabType(item.type as VocabularyItem["type"]),
@@ -517,6 +507,7 @@ export function EnglishLearningApp() {
         example_sentence: null,
         context: item.context,
         korean_translation: null,
+        is_mastered: false,
       })
         setVocabulary((prev) => [saved, ...prev])
         setShowManualAdd(false)
@@ -535,15 +526,16 @@ export function EnglishLearningApp() {
 
   // Delete vocabulary item
   const handleDelete = useCallback((id: string) => {
-    localDeleteVocabularyItem(id)
+    void dbDeleteVocabularyItem(id)
     setVocabulary((prev) => prev.filter((v) => v.id !== id))
     toast.success("Item removed")
   }, [])
 
   // Toggle mastered
   const handleToggleMastered = useCallback((id: string, current: boolean) => {
-    const updated = localUpdateVocabularyItem(id, { is_mastered: !current })
-    if (updated) setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
+    const next = { is_mastered: !current }
+    setVocabulary((prev) => prev.map((v) => v.id === id ? { ...v, ...next } : v))
+    void dbUpdateVocabularyItem(id, next)
   }, [])
 
   // Translate to Korean via Gemini
@@ -566,11 +558,9 @@ export function EnglishLearningApp() {
       const data = await res.json()
       const koreanTranslation: string = data.korean_translation
 
-      const updated = localUpdateVocabularyItem(item.id, { korean_translation: koreanTranslation })
-      if (updated) {
-        setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
-        toast.success(`Korean translation added for "${item.word}"`)
-      }
+      const updated = await dbUpdateVocabularyItem(item.id, { korean_translation: koreanTranslation })
+      setVocabulary((prev) => prev.map((v) => (v.id === item.id ? updated : v)))
+      toast.success(`Korean translation added for "${item.word}"`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)
@@ -707,9 +697,9 @@ export function EnglishLearningApp() {
     setTranscript(conv.transcript)
     setCurrentConversationId(conv.id)
     setIsCurrentTranscriptSaved(true)
-    setVocabulary(localGetVocabulary(conv.id))
+    void fetchVocabulary(conv.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setTranscript])
+  }, [setTranscript, fetchVocabulary])
 
   const activeSpeakerKey = selectedConversationId ?? currentConversationId ?? "__unsaved__"
   const activeSpeakerAssignments = speakerAssignmentsByConversation[activeSpeakerKey] ?? {}
@@ -742,7 +732,7 @@ export function EnglishLearningApp() {
     if (!title) return
 
     try {
-      const updated = localUpdateConversationTitle(conv.id, title)
+      const updated = await dbUpdateConversation(conv.id, { title })
       if (!updated) throw new Error("Failed to rename session")
       setConversations((prev) => prev.map((c) => (c.id === conv.id ? updated : c)))
       toast.success("Session title updated")
@@ -753,46 +743,45 @@ export function EnglishLearningApp() {
   }, [])
 
   const handleDeleteConversation = useCallback((conv: Conversation) => {
-    localDeleteConversation(conv.id)
-    setConversationGroups(localGetConversationGroups())
+    void dbDeleteConversation(conv.id)
     setConversations((prev) => prev.filter((c) => c.id !== conv.id))
     setVocabulary((prev) => prev.filter((v) => v.conversation_id !== conv.id))
-
+    // Remove from groups
+    setConversationGroups((prev) =>
+      prev.map((g) => ({ ...g, conversation_ids: g.conversation_ids.filter((id) => id !== conv.id) }))
+    )
     if (selectedConversationId === conv.id) {
       setSelectedConversationId(null)
       setCurrentConversationId(null)
       setTranscript("")
-      setVocabulary(localGetVocabulary())
+      void fetchVocabulary()
     }
-
     toast.success("Session deleted")
-  }, [selectedConversationId, setTranscript])
+  }, [selectedConversationId, setTranscript, fetchVocabulary])
 
-  const handleCreateGroup = useCallback((name: string) => {
-    const created = localCreateConversationGroup(name, [])
+  const handleCreateGroup = useCallback(async (name: string) => {
+    const created = await dbCreateConversationGroup(name)
     setConversationGroups((prev) => [created, ...prev])
     setSelectedGroupId(created.id)
     toast.success("Folder created")
   }, [])
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
-    localDeleteConversationGroup(groupId)
+    await dbDeleteConversationGroup(groupId)
     setConversationGroups((prev) => prev.filter((g) => g.id !== groupId))
     if (selectedGroupId === groupId) setSelectedGroupId(null)
     toast.success("Folder deleted")
   }, [selectedGroupId])
 
   const handleArchiveGroup = useCallback(async (groupId: string) => {
-    const updated = localArchiveConversationGroup(groupId)
-    if (!updated) return
+    const updated = await dbUpdateConversationGroup(groupId, { archived_at: new Date().toISOString() })
     setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
     if (selectedGroupId === groupId) setSelectedGroupId(null)
     toast.success("Folder archived")
   }, [selectedGroupId])
 
   const handleRestoreGroup = useCallback(async (groupId: string) => {
-    const updated = localRestoreConversationGroup(groupId)
-    if (!updated) return
+    const updated = await dbUpdateConversationGroup(groupId, { archived_at: null })
     setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
     toast.success("Folder restored")
   }, [])
@@ -800,11 +789,7 @@ export function EnglishLearningApp() {
   const handleRenameGroup = useCallback(async (groupId: string, nextName: string) => {
     const name = nextName.trim()
     if (!name) return
-    const updated = localUpdateConversationGroupName(groupId, name)
-    if (!updated) {
-      toast.error("Failed to rename folder")
-      return
-    }
+    const updated = await dbUpdateConversationGroup(groupId, { name })
     setConversationGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)))
     toast.success("Folder name updated")
   }, [])
@@ -812,14 +797,12 @@ export function EnglishLearningApp() {
   const handleSelectGroup = useCallback((groupId: string | null) => {
     setSelectedGroupId(groupId)
     setSelectedConversationId(null)
-    if (groupId) {
-      setCurrentConversationId(null)
-    }
-    setVocabulary(localGetVocabulary())
-  }, [])
+    if (groupId) setCurrentConversationId(null)
+    void fetchVocabulary()
+  }, [fetchVocabulary])
 
-  const handleMoveConversationToGroup = useCallback((conversationId: string, groupId: string | null) => {
-    const updated = localMoveConversationToGroup(conversationId, groupId)
+  const handleMoveConversationToGroup = useCallback(async (conversationId: string, groupId: string | null) => {
+    const updated = await dbMoveConversationToGroup(conversationId, groupId)
     setConversationGroups(updated)
     setSelectedGroupId(groupId)
     toast.success(groupId ? "Moved to folder" : "Moved to inbox")
@@ -839,7 +822,7 @@ export function EnglishLearningApp() {
     }
 
     try {
-      const updated = localUpdateConversationTranscript(targetConversationId, transcript)
+      const updated = await dbUpdateConversation(targetConversationId, { transcript })
       if (updated) {
         setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       }
@@ -912,7 +895,7 @@ export function EnglishLearningApp() {
       }
 
       for (const id of translatedIds) {
-        localUpdateVocabularyItem(id, { korean_translation: translations[id] })
+        void dbUpdateVocabularyItem(id, { korean_translation: translations[id] })
       }
 
       setVocabulary((prev) =>
@@ -1020,7 +1003,7 @@ export function EnglishLearningApp() {
     }
     try {
       const targetConversationId = selectedConversationId ?? null
-      const saved = localCreateVocabularyItem({
+      const saved = await dbCreateVocabularyItem({
         conversation_id: targetConversationId,
         word,
         type: "word",
@@ -1029,6 +1012,7 @@ export function EnglishLearningApp() {
         example_sentence: null,
         context: null,
         korean_translation: null,
+        is_mastered: false,
       })
       setVocabulary((prev) => [saved, ...prev])
       toast.success(`"${word}" added to vocabulary`)
@@ -1038,18 +1022,18 @@ export function EnglishLearningApp() {
     }
   }, [vocabulary, selectedConversationId])
 
-  const handleSaveTutorSession = useCallback((messages: import("@/lib/types").TutorChatMessage[]) => {
-    const saved = localSaveTutorSession(messages)
+  const handleSaveTutorSession = useCallback(async (messages: import("@/lib/types").TutorChatMessage[]) => {
+    const saved = await dbSaveTutorSession(messages)
     setTutorSessions((prev) => [saved, ...prev])
   }, [])
 
   const handleDeleteTutorSession = useCallback((id: string) => {
-    localDeleteTutorSession(id)
+    void dbDeleteTutorSession(id)
     setTutorSessions((prev) => prev.filter((s) => s.id !== id))
   }, [])
 
   const handleAddVocabularyFromTutor = useCallback(
-    (payload: {
+    async (payload: {
       word: string
       type: VocabularyItem["type"]
       definition?: string
@@ -1063,7 +1047,7 @@ export function EnglishLearningApp() {
         return
       }
       try {
-        const saved = localCreateVocabularyItem({
+        const saved = await dbCreateVocabularyItem({
           conversation_id: null,
           word: payload.word,
           type: payload.type,
@@ -1072,6 +1056,7 @@ export function EnglishLearningApp() {
           example_sentence: payload.example_sentence ?? null,
           context: payload.context ?? null,
           korean_translation: payload.korean_translation ?? null,
+          is_mastered: false,
         })
         setVocabulary((prev) => [saved, ...prev])
         toast.success(`"${saved.word}" added to vocabulary`)
@@ -1253,38 +1238,81 @@ export function EnglishLearningApp() {
     return <div className="h-dvh max-h-dvh bg-background" />
   }
 
-  if (!isUnlocked) {
-    return (
-      <div className="h-dvh max-h-dvh bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm rounded-lg border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Lock className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Enter app password</h2>
-          </div>
-          <Input
-            type="password"
-            value={unlockPassword}
-            onChange={(e) => setUnlockPassword(e.target.value)}
-            placeholder="Password"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                void handleUnlock()
-              }
-            }}
-          />
-          {unlockError && <p className="text-xs text-destructive">{unlockError}</p>}
-          <Button className="w-full" onClick={() => void handleUnlock()} disabled={isUnlocking}>
-            {isUnlocking ? "Checking..." : "Unlock"}
-          </Button>
-        </div>
-      </div>
-    )
+  if (!user) {
+    return <LoginScreen />
   }
 
-  const renderTranscription = (panelClassName?: string) => (
+  const renderDesktopCapturePanel = (panelClassName?: string) => (
+    <div className={cn("flex min-h-0 flex-col overflow-hidden", panelClassName)}>
+      {/* Sub-tab bar */}
+      <div className="flex shrink-0 items-center gap-0 border-b border-border bg-card px-3">
+        {(["record", "captures"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setDesktopCaptureSubTab(tab)}
+            className={cn(
+              "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors",
+              desktopCaptureSubTab === tab
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab === "record" ? (
+              <>
+                {isRecording && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-recording" />}
+                Record
+              </>
+            ) : (
+              <>
+                Sessions
+                {conversations.length > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] tabular-nums">{conversations.length}</span>
+                )}
+              </>
+            )}
+          </button>
+        ))}
+        {/* Collapse button */}
+        <button
+          onClick={collapseLeftPanel}
+          className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+          title="Collapse"
+        >
+          <PanelLeftClose className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Record sub-tab */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopCaptureSubTab === "record" ? "flex" : "none" }}>
+        {renderTranscriptionInner()}
+      </div>
+
+      {/* Captures sub-tab */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopCaptureSubTab === "captures" ? "flex" : "none" }}>
+        <ConversationHistory
+          conversations={conversations}
+          groups={conversationGroups}
+          selectedGroupId={selectedGroupId}
+          selectedId={selectedConversationId}
+          onSelect={handleSelectConversation}
+          onRename={handleRenameConversation}
+          onDelete={handleDeleteConversation}
+          onCreateGroup={handleCreateGroup}
+          onRenameGroup={handleRenameGroup}
+          onDeleteGroup={handleDeleteGroup}
+          onArchiveGroup={handleArchiveGroup}
+          onRestoreGroup={handleRestoreGroup}
+          onSelectGroup={handleSelectGroup}
+          onMoveConversationToGroup={handleMoveConversationToGroup}
+          workspaceStats={workspaceStats}
+        />
+      </div>
+    </div>
+  )
+
+  const renderTranscriptionInner = () => (
     <TranscriptionColumn
-      className={cn(panelClassName)}
+      className="h-full min-h-0 flex-1"
       compactToolbar={isMobile}
       hasBottomNav={isMobile}
       showCollapseButton={!isMobile}
@@ -1355,7 +1383,14 @@ export function EnglishLearningApp() {
     />
   )
 
-  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "vocabulary" | "history" | "tutor" | "tutor-history") => (
+  // Mobile still uses a plain wrapper (sub-tabs handled separately in mobile layout)
+  const renderTranscription = (panelClassName?: string) => (
+    <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", panelClassName)}>
+      {renderTranscriptionInner()}
+    </div>
+  )
+
+  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "vocabulary" | "tutor" | "tutor-history") => (
     <LibraryColumn
       variant={soloMobile ? "solo" : "split"}
       onCollapseRight={soloMobile ? undefined : collapseRightPanel}
@@ -1405,7 +1440,7 @@ export function EnglishLearningApp() {
         setSelectedConversationId(null)
         setSelectedGroupId(null)
         setVocabSourceFilter("all")
-        setVocabulary(localGetVocabulary())
+        void fetchVocabulary()
       }}
       onExportCsv={handleExportCsv}
       onExportPdf={handleExportPdf}
@@ -1447,6 +1482,7 @@ export function EnglishLearningApp() {
             <GraduationCap className="text-primary h-4 w-4" />
           </div>
           <h1 className="text-foreground font-bold text-sm sm:text-base leading-none">SurviveEnglish</h1>
+
         </div>
 
         {/* Center: recording status (mobile) or model status (desktop) */}
@@ -1498,14 +1534,28 @@ export function EnglishLearningApp() {
             )}
           </div>
 
-          {/* Storage badge (desktop) */}
-          <Badge
-            variant="outline"
-            className="hidden gap-1 text-xs sm:flex h-6 cursor-default select-none text-muted-foreground border-border/60 bg-transparent"
-          >
-            <HardDrive className="h-3 w-3" />
-            Local
-          </Badge>
+          {/* User + logout (desktop) */}
+          {user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="hidden sm:flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  {user.user_metadata?.avatar_url
+                    ? <img src={user.user_metadata.avatar_url as string} alt="" className="h-4 w-4 rounded-full" />
+                    : <div className="h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold text-primary">{(user.email ?? "U")[0].toUpperCase()}</div>}
+                  <span className="max-w-[100px] truncate">{user.user_metadata?.full_name as string ?? user.email}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground truncate">{user.email}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => void handleSignOut()} className="text-destructive focus:text-destructive">
+                  로그아웃
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Mobile menu */}
           {isMobile && (
@@ -1543,6 +1593,10 @@ export function EnglishLearningApp() {
                 <DropdownMenuItem className="text-xs" onClick={() => setShowConfig(true)}>
                   <Settings2 className="mr-2 h-3.5 w-3.5" />
                   Settings & storage
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-xs text-destructive focus:text-destructive" onClick={() => void handleSignOut()}>
+                  로그아웃
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1636,7 +1690,7 @@ export function EnglishLearningApp() {
                         : "border-transparent text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {tab === "record" ? "녹음" : "세션"}
+                    {tab === "record" ? "Record" : "Sessions"}
                     {tab === "sessions" && conversations.length > 0 && (
                       <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] tabular-nums">{conversations.length}</span>
                     )}
@@ -1752,49 +1806,83 @@ export function EnglishLearningApp() {
             </nav>
           </div>
         ) : (
-          <>
-            {!leftCollapsed && !rightCollapsed && (
-              <ResizablePanelGroup direction="horizontal" className="flex-1">
-                <ResizablePanel
-                  defaultSize={leftPanelWidthPct}
-                  minSize={25}
-                  maxSize={75}
-                  onResize={(size) => setLeftPanelWidthPct(size)}
-                  className="min-w-0"
-                >
-                  {renderTranscription("h-full min-h-0 border-r border-border")}
-                </ResizablePanel>
-                <ResizableHandle withHandle className="bg-border/80 hover:bg-primary/40 data-dragging:bg-primary/50" />
-                <ResizablePanel defaultSize={100 - leftPanelWidthPct} minSize={25} maxSize={75} className="min-w-0 overflow-hidden">
-                  {renderLibrary(false)}
-                </ResizablePanel>
-              </ResizablePanelGroup>
+          /* ── Desktop: tab-based layout (same structure as mobile) ── */
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* Recording indicator when not on Capture tab */}
+            {isRecording && desktopMainTab !== "capture" && (
+              <button
+                onClick={() => setDesktopMainTab("capture")}
+                className="flex w-full shrink-0 items-center gap-2 border-b border-recording/20 bg-recording/10 px-4 py-1.5"
+              >
+                <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-recording" />
+                <span className="font-mono text-sm font-medium tabular-nums text-recording">
+                  {String(Math.floor(duration / 60)).padStart(2, "0")}:{String(duration % 60).padStart(2, "0")}
+                </span>
+                <span className="text-sm text-recording">· Recording</span>
+                <span className="ml-auto text-xs text-recording/60">View →</span>
+              </button>
             )}
 
-            {!leftCollapsed && rightCollapsed && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{renderTranscription("h-full min-h-0 border-r border-border")}</div>
-            )}
-
-            {leftCollapsed && (
-              <div className="border-border flex w-11 shrink-0 flex-col items-center border-r pt-3 sm:w-10">
-                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandLeftPanel} title="Expand transcribe panel">
-                  <PanelLeftOpen className="h-4 w-4" />
-                </Button>
+            {/* Top tab bar */}
+            <nav className="shrink-0 border-b border-border bg-card/95">
+              <div className="flex h-11 items-stretch">
+                {(
+                  [
+                    { value: "tutor" as const, icon: MessageCircle, label: "Tutor" },
+                    { value: "capture" as const, icon: Mic, label: "Capture" },
+                    { value: "words" as const, icon: BookOpen, label: "Words" },
+                    { value: "history" as const, icon: History, label: "History" },
+                  ] as const
+                ).map(({ value, icon: Icon, label }) => {
+                  const isActive = desktopMainTab === value
+                  const badgeCount =
+                    value === "words" && vocabulary.length > 0 ? vocabulary.length
+                    : value === "history" && tutorSessions.length > 0 ? tutorSessions.length
+                    : null
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => setDesktopMainTab(value)}
+                      className={cn(
+                        "relative flex items-center gap-2 border-b-2 px-5 text-sm font-medium transition-colors",
+                        isActive
+                          ? "border-primary text-primary"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Icon className={cn("h-4 w-4", value === "capture" && isRecording && "text-recording")} />
+                      {label}
+                      {value === "capture" && isRecording && (
+                        <span className="absolute right-2 top-2 h-1.5 w-1.5 animate-pulse rounded-full bg-recording" />
+                      )}
+                      {badgeCount !== null && (
+                        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary">
+                          {badgeCount > 99 ? "99+" : badgeCount}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
-            )}
+            </nav>
 
-            {!rightCollapsed && leftCollapsed && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{renderLibrary(false, undefined)}</div>
-            )}
+            {/* Tab content panels — always mounted, CSS show/hide */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "capture" ? "flex" : "none" }}>
+              {renderDesktopCapturePanel()}
+            </div>
 
-            {rightCollapsed && !isMobile && (
-              <div className="border-border flex w-11 shrink-0 flex-col items-center border-l pt-3 sm:w-10">
-                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={expandRightPanel} title="Expand study panel">
-                  <PanelRightOpen className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "tutor" || desktopMainTab === "words" ? "flex" : "none" }}>
+              {renderLibrary(true, desktopMainTab === "words" ? "vocabulary" : "tutor")}
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "history" ? "flex" : "none" }}>
+              <TutorHistoryPanel
+                sessions={tutorSessions}
+                onDeleteSession={handleDeleteTutorSession}
+                className="min-h-0 flex-1"
+              />
+            </div>
+          </div>
         )}
       </div>
 
