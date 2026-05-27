@@ -12,6 +12,7 @@ export interface VocabularyItem {
   conversation_id: string | null
   word: string
   type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression"
+  source?: "session" | "tutor" | "manual"
   definition: string | null
   example_sentence: string | null
   korean_translation: string | null
@@ -34,4 +35,16 @@ export interface ConversationGroup {
   conversation_ids: string[]
   created_at: string
   archived_at?: string | null
+}
+
+export interface TutorChatMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
+export interface TutorSession {
+  id: string
+  title: string
+  messages: TutorChatMessage[]
+  created_at: string
 }

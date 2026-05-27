@@ -2,11 +2,12 @@
  * Client-side localStorage database — mirrors the Supabase schema.
  * Used when storageMode === "local".
  */
-import { Conversation, ConversationGroup, VocabularyItem } from "@/lib/types"
+import { Conversation, ConversationGroup, VocabularyItem, TutorSession, TutorChatMessage } from "@/lib/types"
 
 const CONV_KEY = "englishlens_conversations"
 const VOCAB_KEY = "englishlens_vocabulary"
 const GROUP_KEY = "englishlens_conversation_groups"
+const TUTOR_SESSION_KEY = "englishlens_tutor_sessions"
 
 function genId(): string {
   return crypto.randomUUID()
@@ -205,4 +206,38 @@ export function localUpdateVocabularyItem(
 export function localDeleteVocabularyItem(id: string): void {
   const items = localGetVocabulary()
   localStorage.setItem(VOCAB_KEY, JSON.stringify(items.filter((v) => v.id !== id)))
+}
+
+// ── Tutor Sessions ────────────────────────────────────────────
+
+export function localGetTutorSessions(): TutorSession[] {
+  try {
+    const raw = localStorage.getItem(TUTOR_SESSION_KEY)
+    if (!raw) return []
+    const items: TutorSession[] = JSON.parse(raw)
+    return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  } catch {
+    return []
+  }
+}
+
+export function localSaveTutorSession(messages: TutorChatMessage[]): TutorSession {
+  const userMessages = messages.filter((m) => m.role === "user")
+  const title =
+    userMessages[0]?.content.slice(0, 60).trim() ||
+    `Tutor session ${new Date().toLocaleDateString("ko-KR")}`
+  const session: TutorSession = {
+    id: genId(),
+    title,
+    messages,
+    created_at: new Date().toISOString(),
+  }
+  const existing = localGetTutorSessions()
+  localStorage.setItem(TUTOR_SESSION_KEY, JSON.stringify([session, ...existing]))
+  return session
+}
+
+export function localDeleteTutorSession(id: string): void {
+  const sessions = localGetTutorSessions()
+  localStorage.setItem(TUTOR_SESSION_KEY, JSON.stringify(sessions.filter((s) => s.id !== id)))
 }

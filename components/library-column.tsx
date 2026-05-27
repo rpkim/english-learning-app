@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Conversation, ConversationGroup, VocabularyItem } from "@/lib/types"
+import { Conversation, ConversationGroup, VocabularyItem, TutorSession } from "@/lib/types"
 import { VocabularyCard } from "@/components/vocabulary-card"
 import { ConversationHistory } from "@/components/conversation-history"
 import { TutorChatPanel } from "@/components/tutor-chat-panel"
+import { TutorHistoryPanel } from "@/components/tutor-history-panel"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -19,7 +20,15 @@ import {
   PanelRightClose,
   PanelLeftOpen,
   MessageCircle,
+  MoreHorizontal,
 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 export interface LibraryColumnProps {
@@ -29,7 +38,7 @@ export interface LibraryColumnProps {
   leftCollapsed?: boolean
   onExpandLeft?: () => void
   /** Externally controlled active tab (for mobile bottom nav) */
-  activeTab?: "vocabulary" | "history" | "tutor"
+  activeTab?: "vocabulary" | "history" | "tutor" | "tutor-history"
   /** Hide the inner tab bar (when bottom nav handles navigation) */
   hideTabs?: boolean
   scopedVocabulary: VocabularyItem[]
@@ -73,6 +82,13 @@ export interface LibraryColumnProps {
   onAddFrequentWord: (word: string) => void | Promise<void>
   onExcludeTopWord: (word: string) => void
   tutorTranscriptContext: string
+  onAddVocabularyFromTutor?: (payload: { word: string; type: VocabularyItem["type"]; definition?: string; context?: string }) => void
+  onSaveTutorSession?: (messages: import("@/lib/types").TutorChatMessage[]) => void
+  tutorSessions: TutorSession[]
+  onDeleteTutorSession: (id: string) => void
+  vocabSourceFilter: "all" | "session" | "tutor" | "manual"
+  setVocabSourceFilter: (f: "all" | "session" | "tutor" | "manual") => void
+  tutorVocabCount: number
 }
 
 export function LibraryColumn({
@@ -124,18 +140,32 @@ export function LibraryColumn({
   onAddFrequentWord,
   onExcludeTopWord,
   tutorTranscriptContext,
+  onAddVocabularyFromTutor,
+  onSaveTutorSession,
+  tutorSessions,
+  onDeleteTutorSession,
+  vocabSourceFilter,
+  setVocabSourceFilter,
+  tutorVocabCount,
 }: LibraryColumnProps) {
-  const [localTab, setLocalTab] = useState<"vocabulary" | "history" | "tutor">("vocabulary")
+  const [localTab, setLocalTab] = useState<"vocabulary" | "history" | "tutor" | "tutor-history">("tutor")
   const effectiveTab = activeTab ?? localTab
 
   const scopeLabel =
-    selectedConversationId
-      ? "This recording"
-      : selectedGroupId === "__ungrouped__"
-        ? "Inbox (ungrouped)"
-        : selectedGroupId
-          ? "This folder"
-          : "All saved words"
+    vocabSourceFilter === "tutor"
+      ? "Tutor words"
+      : vocabSourceFilter === "manual"
+        ? "Manually added"
+        : selectedConversationId
+          ? "This recording"
+          : selectedGroupId === "__ungrouped__"
+            ? "Inbox (ungrouped)"
+            : selectedGroupId
+              ? "This folder"
+              : "All saved words"
+
+  const showSourceFilterClear = vocabSourceFilter !== "all"
+  const showConversationFilterClear = vocabSourceFilter === "all" && selectedConversationId
 
   const tabBar = hideTabs ? null : (
     <div className="border-border shrink-0 border-b px-3 pt-2 sm:px-4">
@@ -167,7 +197,7 @@ export function LibraryColumn({
         </div>
       )}
 
-      <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5 rounded-xl bg-muted/50 p-1">
+      <TabsList className="grid h-auto w-full grid-cols-4 gap-0.5 rounded-xl bg-muted/50 p-1">
         <TabsTrigger
           value="vocabulary"
           className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
@@ -205,204 +235,161 @@ export function LibraryColumn({
           <MessageCircle className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">Tutor</span>
         </TabsTrigger>
+        <TabsTrigger
+          value="tutor-history"
+          className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
+        >
+          <History className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">History</span>
+          {tutorSessions.length > 0 && (
+            <Badge variant="secondary" className="h-4 min-w-4 rounded-full px-1 text-[9px] leading-none sm:text-[10px]">
+              {tutorSessions.length}
+            </Badge>
+          )}
+        </TabsTrigger>
       </TabsList>
     </div>
   )
 
   const vocabToolbar = (
-    <div className="border-border flex min-w-0 shrink-0 flex-col gap-2.5 border-b px-3 py-3 sm:px-4">
-      {/* Scope + filter row */}
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">{scopeLabel}</p>
-          {selectedConversationId && (
-            <button
-              onClick={onShowAllVocabulary}
-              className="mt-0.5 text-[11px] text-primary hover:underline"
-            >
-              Clear filter →
+    <div className="border-border flex min-w-0 shrink-0 flex-col gap-2 border-b px-3 py-2.5 sm:px-4">
+      {/* Row 1: Scope label + mastered + actions */}
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <p className="truncate text-sm font-semibold text-foreground">{scopeLabel}</p>
+          {(showSourceFilterClear || showConversationFilterClear) && (
+            <button onClick={onShowAllVocabulary} className="shrink-0 text-[11px] text-primary hover:underline">
+              전체 보기
             </button>
           )}
+          {masteredCount > 0 && (
+            <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+              {masteredCount}/{scopedVocabulary.length} mastered
+            </span>
+          )}
         </div>
-        {masteredCount > 0 && (
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {masteredCount}/{scopedVocabulary.length} mastered
-          </span>
-        )}
+
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={onShowManualAdd}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            추가
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                onClick={() => void onTranslateScoped()}
+                disabled={isBatchTranslating}
+              >
+                {isBatchTranslating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Globe className="mr-2 h-3.5 w-3.5" />}
+                전체 번역
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onExportCsv}>
+                <FileDown className="mr-2 h-3.5 w-3.5" />
+                CSV 내보내기
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void onExportPdf()} disabled={isExportingPdf}>
+                {isExportingPdf ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <FileDown className="mr-2 h-3.5 w-3.5" />}
+                PDF 내보내기
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
-      {/* Type filter chips */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
-        {/* View toggle */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
-          <Button
-            variant={vocabView === "items" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 rounded-md px-2.5 text-xs"
-            onClick={() => setVocabView("items")}
-          >
-            Items
-          </Button>
-          <Button
-            variant={vocabView === "frequency" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 rounded-md px-2.5 text-xs"
-            onClick={() => setVocabView("frequency")}
-          >
-            Top words
-          </Button>
-        </div>
-
-        <div className="h-4 w-px bg-border/60 shrink-0" />
+      {/* Row 2: Source + type filters */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+        {/* Source filter — always show when vocab exists */}
+        {scopedVocabulary.length > 0 || vocabSourceFilter !== "all" ? (
+          <>
+            {(
+              [
+                { key: "all" as const, label: "All" },
+                { key: "session" as const, label: "Session" },
+                { key: "tutor" as const, label: tutorVocabCount > 0 ? `Tutor ${tutorVocabCount}` : "Tutor" },
+              ]
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setVocabSourceFilter(key)}
+                className={cn(
+                  "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                  vocabSourceFilter === key
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-transparent text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="mx-0.5 h-3.5 w-px shrink-0 bg-border/60" />
+          </>
+        ) : null}
 
         {/* Type filter */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
-          {(
-            [
-              { key: "all", label: `All ${scopedVocabulary.length}` },
-              { key: "word", label: `Words ${wordCount}` },
-              { key: "idiom", label: `Idioms ${idiomCount}` },
-              { key: "slang", label: `Slang ${slangCount}` },
-            ] as const
-          ).map(({ key, label }) => (
-            <Button
-              key={key}
-              variant={vocabFilter === key ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 rounded-md px-2 text-xs"
-              onClick={() => setVocabFilter(key)}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* Action row */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={onShowManualAdd}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add word
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => void onTranslateScoped()}
-          disabled={isBatchTranslating}
-          title="Translate all untranslated in current scope"
-        >
-          {isBatchTranslating ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-          ) : (
-            <Globe className="h-3.5 w-3.5 shrink-0" />
-          )}
-          <span className="truncate">Translate all</span>
-        </Button>
-        <div className="h-4 w-px bg-border/60 shrink-0" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={onExportCsv}
-          title="Export as CSV"
-        >
-          <FileDown className="h-3.5 w-3.5" />
-          CSV
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => void onExportPdf()}
-          disabled={isExportingPdf}
-          title="Export as PDF"
-        >
-          {isExportingPdf ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <FileDown className="h-3.5 w-3.5" />
-          )}
-          PDF
-        </Button>
+        {(
+          [
+            { key: "all" as const, label: `All ${scopedVocabulary.length}` },
+            { key: "word" as const, label: `Words ${wordCount}` },
+            { key: "idiom" as const, label: `Idioms ${idiomCount}` },
+            { key: "slang" as const, label: `Slang ${slangCount}` },
+          ]
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setVocabFilter(key)}
+            className={cn(
+              "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+              vocabFilter === key
+                ? "border-foreground/30 bg-foreground/10 text-foreground"
+                : "border-transparent bg-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   )
 
   const vocabBody = (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
-      <div className={cn("flex flex-col gap-1.5 p-2.5", hideTabs ? "pb-20" : "pb-[max(1rem,env(safe-area-inset-bottom))]")}>
+      <div className={cn("flex flex-col gap-1 p-2 sm:p-2.5", hideTabs ? "pb-20" : "pb-[max(1rem,env(safe-area-inset-bottom))]")}>
         {isLoadingVocab ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
-        ) : vocabView === "items" && filteredVocabulary.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
-            <BookOpen className="h-10 w-10 opacity-20" />
-            <p className="max-w-[20ch] text-center text-sm leading-relaxed text-balance">
-              No vocabulary items yet. Start a session to extract words.
+        ) : filteredVocabulary.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
+            <BookOpen className="h-8 w-8 opacity-20" />
+            <p className="max-w-[22ch] text-sm leading-relaxed text-balance">
+              {vocabSourceFilter === "tutor"
+                ? "Tutor에서 저장한 단어가 없습니다."
+                : "아직 저장된 단어가 없습니다."}
             </p>
           </div>
-        ) : vocabView === "items" ? (
-          <>
-            {filteredVocabulary.map((item) => (
-              <VocabularyCard
-                key={item.id}
-                item={item}
-                onDelete={onDeleteVocab}
-                onToggleMastered={onToggleMastered}
-                onTranslate={onTranslate}
-                isTranslating={translatingId === item.id}
-              />
-            ))}
-          </>
-        ) : frequentWords.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
-            <BookOpen className="h-10 w-10 opacity-20" />
-            <p className="text-center text-sm leading-relaxed">No frequent words in this scope yet.</p>
-          </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            {frequentWords.map((item) => (
-              <div
-                key={item.word}
-                className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted/30"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="min-w-0 text-sm font-medium break-all sm:break-normal sm:truncate">
-                    {item.word}
-                  </span>
-                  <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] tabular-nums">
-                    ×{item.count}
-                  </Badge>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7 text-xs"
-                    onClick={() => void onAddFrequentWord(item.word)}
-                  >
-                    + Add
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-muted-foreground"
-                    onClick={() => onExcludeTopWord(item.word)}
-                    title="Exclude from top words"
-                  >
-                    <EyeOff className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+          filteredVocabulary.map((item) => (
+            <VocabularyCard
+              key={item.id}
+              item={item}
+              onDelete={onDeleteVocab}
+              onToggleMastered={onToggleMastered}
+              onTranslate={onTranslate}
+              isTranslating={translatingId === item.id}
+            />
+          ))
         )}
       </div>
     </div>
@@ -441,7 +428,7 @@ export function LibraryColumn({
       <Tabs
         value={effectiveTab}
         onValueChange={(v) => {
-          if (!activeTab) setLocalTab(v as "vocabulary" | "history" | "tutor")
+          if (!activeTab) setLocalTab(v as "vocabulary" | "history" | "tutor" | "tutor-history")
         }}
         className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
@@ -454,7 +441,19 @@ export function LibraryColumn({
           {historyBody}
         </TabsContent>
         <TabsContent value="tutor" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-          <TutorChatPanel transcriptContext={tutorTranscriptContext} className={cn("min-h-0 flex-1", hideTabs && "pb-16")} />
+          <TutorChatPanel
+            transcriptContext={tutorTranscriptContext}
+            className={cn("min-h-0 flex-1", hideTabs && "pb-16")}
+            onAddVocabularyItem={onAddVocabularyFromTutor}
+            onSaveSession={onSaveTutorSession}
+          />
+        </TabsContent>
+        <TabsContent value="tutor-history" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
+          <TutorHistoryPanel
+            sessions={tutorSessions}
+            onDeleteSession={onDeleteTutorSession}
+            className="min-h-0 flex-1"
+          />
         </TabsContent>
       </Tabs>
     </div>

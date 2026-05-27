@@ -100,240 +100,181 @@ export function VocabularyCard({
   return (
     <div
       className={cn(
-        "group relative rounded-xl border border-border bg-card transition-all duration-150",
-        "hover:border-border/80 hover:shadow-sm",
-        item.is_mastered && "opacity-55"
+        "group relative rounded-xl border border-border/60 bg-card transition-all duration-150",
+        "hover:border-border hover:bg-muted/20",
+        item.is_mastered && "opacity-50"
       )}
     >
       {/* Card header */}
-      <div className="flex items-start gap-2 px-3 py-2.5">
-        {/* Left: word + badges */}
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        {/* Left: word + type badge + korean */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <span className="text-sm font-semibold leading-snug text-foreground wrap-anywhere">
               {item.word}
             </span>
-            <Badge
-              variant="outline"
-              className={cn("h-5 shrink-0 px-1.5 text-[10px] font-medium", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}
-            >
+            <span className={cn("shrink-0 rounded-full border px-2 py-0 text-[10px] font-medium leading-5", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}>
               {TYPE_LABELS[item.type] ?? item.type}
-            </Badge>
+            </span>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); speak(item.word) }}
-              title="Speak word"
-              className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+              title="Speak"
+              className="inline-flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground transition-colors"
             >
               {speakingText === item.word
-                ? <VolumeX className="h-3.5 w-3.5 animate-pulse text-primary" />
-                : <Volume2 className="h-3.5 w-3.5" />}
+                ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
+                : <Volume2 className="h-3 w-3" />}
             </button>
           </div>
           {koreanTranslationText && (
-            <span className="inline-flex max-w-full self-start rounded-md bg-korean/15 px-2 py-0.5 text-xs font-medium text-korean leading-snug wrap-anywhere">
+            <span className="text-xs text-muted-foreground leading-snug wrap-anywhere">
               {koreanTranslationText}
             </span>
           )}
         </div>
 
-        {/* Right: action buttons */}
-        <div className="flex shrink-0 items-center gap-0.5">
+        {/* Right: compact actions */}
+        <div className="flex shrink-0 items-center">
           {/* Mastered toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => onToggleMastered(item.id, item.is_mastered)}
-            title={item.is_mastered ? "Mark as not mastered" : "Mark as mastered"}
+            title={item.is_mastered ? "Unmark mastered" : "Mark mastered"}
           >
-            {item.is_mastered ? (
-              <CheckCircle2 className="h-4 w-4 text-accent" />
-            ) : (
-              <Circle className="h-4 w-4" />
-            )}
-          </Button>
-
-          {/* Translate */}
-          {!koreanTranslationText && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => onTranslate(item)}
-              disabled={isTranslating}
-              title="Translate to Korean"
-            >
-              <Globe className={cn("h-4 w-4", isTranslating && "animate-pulse text-primary")} />
-            </Button>
-          )}
+            {item.is_mastered
+              ? <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
+              : <Circle className="h-4 w-4" />}
+          </button>
 
           {/* Expand */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setExpanded(!expanded)}
-            title="Toggle details"
           >
-            {expanded ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </Button>
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
 
-          {/* Delete */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+          {/* Delete — hover only */}
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
             onClick={() => onDelete(item.id)}
             title="Delete"
           >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t border-border/60 px-3 pb-3 pt-2.5 space-y-3">
+        <div className="border-t border-border/40 px-3 pb-3 pt-2.5 space-y-2.5">
           {item.definition && (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Meaning</p>
-              <p className="text-sm leading-relaxed text-foreground whitespace-pre-line wrap-anywhere">
-                {item.definition}
-              </p>
-            </div>
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line wrap-anywhere">
+              {item.definition}
+            </p>
           )}
 
           {item.example_sentence && (
-            <div>
-              <div className="mb-1 flex items-center gap-1.5">
-                <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Example</p>
-                <button
-                  type="button"
-                  onClick={() => speak(item.example_sentence!)}
-                  title="Speak example sentence"
-                  className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {speakingText === item.example_sentence
-                    ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
-                    : <Volume2 className="h-3 w-3" />}
-                </button>
-              </div>
-              <p className="text-sm italic leading-relaxed text-foreground/80 wrap-anywhere">
+            <div className="flex items-start gap-1.5">
+              <p className="flex-1 text-[13px] italic leading-relaxed text-muted-foreground wrap-anywhere">
                 &ldquo;{item.example_sentence}&rdquo;
               </p>
+              <button
+                type="button"
+                onClick={() => speak(item.example_sentence!)}
+                className="mt-0.5 shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+              >
+                {speakingText === item.example_sentence
+                  ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
+                  : <Volume2 className="h-3 w-3" />}
+              </button>
             </div>
           )}
 
           {item.context && (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">From transcript</p>
-              <p className="rounded-lg bg-muted/60 px-2.5 py-2 font-mono text-xs leading-relaxed text-muted-foreground wrap-anywhere">
-                {item.context}
-              </p>
-            </div>
+            <p className="rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs leading-relaxed text-muted-foreground wrap-anywhere">
+              {item.context}
+            </p>
           )}
 
-          {koreanTranslationText && (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Korean</p>
-              <p className="text-base font-semibold text-korean wrap-anywhere">
-                {koreanTranslationText}
-              </p>
-            </div>
-          )}
-
-          {!koreanTranslationText && (
+          {/* Korean + translate */}
+          {koreanTranslationText ? (
+            <p className="text-sm font-medium text-korean wrap-anywhere">{koreanTranslationText}</p>
+          ) : (
             <Button
               size="sm"
               variant="outline"
-              className="w-full gap-1.5 text-xs"
+              className="h-7 gap-1.5 text-xs"
               onClick={() => onTranslate(item)}
               disabled={isTranslating}
             >
-              <Globe className="h-3.5 w-3.5" />
-              {isTranslating ? "Translating…" : "Translate to Korean"}
+              {isTranslating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />}
+              {isTranslating ? "번역 중…" : "한국어 번역"}
             </Button>
           )}
 
           {/* AI deep dive */}
-          <div className="space-y-2 border-t border-dashed border-border/60 pt-2.5">
-            <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">AI deeper dive</p>
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="h-8 gap-1.5 text-xs"
-                disabled={loadingExamples}
-                onClick={() => void runDeepDive("examples")}
-              >
-                {loadingExamples ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                More examples
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="h-8 gap-1.5 text-xs"
-                disabled={loadingEtymology}
-                onClick={() => void runDeepDive("etymology")}
-              >
-                {loadingEtymology ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-                Etymology
-              </Button>
-            </div>
-
-            {aiError && <p className="text-xs text-destructive">{aiError}</p>}
-
-            {extraExamples && extraExamples.length > 0 && (
-              <div>
-                <p className="mb-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Extra examples</p>
-                <ul className="space-y-1.5 text-sm">
-                  {extraExamples.map((line, idx) => (
-                    <li key={idx} className="flex items-start gap-2 wrap-anywhere leading-relaxed">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40" />
-                      <span className="flex-1">{line}</span>
-                      <button
-                        type="button"
-                        onClick={() => speak(line)}
-                        title="Speak this example"
-                        className="mt-0.5 shrink-0 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {speakingText === line
-                          ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
-                          : <Volume2 className="h-3 w-3" />}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {Array.isArray(extraExamples) && extraExamples.length === 0 && !loadingExamples && (
-              <p className="text-xs text-muted-foreground">No extra examples returned.</p>
-            )}
-
-            {(etymology || relatedForms) && (
-              <div className="space-y-2">
-                {etymology && (
-                  <div>
-                    <p className="mb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Etymology</p>
-                    <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap wrap-break-word">{etymology}</p>
-                  </div>
-                )}
-                {relatedForms && (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Related: </span>
-                    {relatedForms}
-                  </p>
-                )}
-              </div>
-            )}
+          <div className="flex flex-wrap gap-1.5 border-t border-dashed border-border/40 pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+              disabled={loadingExamples}
+              onClick={() => void runDeepDive("examples")}
+            >
+              {loadingExamples ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              예문 더 보기
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+              disabled={loadingEtymology}
+              onClick={() => void runDeepDive("etymology")}
+            >
+              {loadingEtymology ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
+              어원
+            </Button>
           </div>
+
+          {aiError && <p className="text-xs text-destructive">{aiError}</p>}
+
+          {extraExamples && extraExamples.length > 0 && (
+            <ul className="space-y-1.5 text-[13px]">
+              {extraExamples.map((line, idx) => (
+                <li key={idx} className="flex items-start gap-2 wrap-anywhere leading-relaxed text-foreground/80">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                  <span className="flex-1">{line}</span>
+                  <button
+                    type="button"
+                    onClick={() => speak(line)}
+                    className="mt-0.5 shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+                  >
+                    {speakingText === line
+                      ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
+                      : <Volume2 className="h-3 w-3" />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {(etymology || relatedForms) && (
+            <div className="space-y-1.5 text-[13px]">
+              {etymology && <p className="leading-relaxed text-foreground/80 wrap-break-word">{etymology}</p>}
+              {relatedForms && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground/70">Related: </span>{relatedForms}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
