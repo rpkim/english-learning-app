@@ -113,11 +113,13 @@ export function TutorHistoryPanel({ sessions, onDeleteSession, className, hidePa
                   key={session.id}
                   className="group rounded-xl border border-border/60 bg-card transition-all"
                 >
-                  {/* Session header */}
-                  <button
-                    type="button"
+                  {/* Session header — div instead of button to avoid nested-button hydration error */}
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setExpandedId(isExpanded ? null : session.id)}
-                    className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpandedId(isExpanded ? null : session.id) }}
+                    className="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2.5 text-left"
                   >
                     <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                       <MessageCircle className="h-3.5 w-3.5" />
@@ -143,7 +145,7 @@ export function TutorHistoryPanel({ sessions, onDeleteSession, className, hidePa
                         ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
                         : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                     </div>
-                  </button>
+                  </div>
 
                   {/* Expanded messages */}
                   {isExpanded && (
