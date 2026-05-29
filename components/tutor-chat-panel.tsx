@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import type { VocabularyItem, TutorChatMessage } from "@/lib/types"
 import type { LookupResult, MeaningResult, TranslateResult, NaturalizeResult } from "@/app/api/tutor-lookup/route"
 import { useTts } from "@/hooks/use-tts"
+import { useLocale } from "@/lib/locale-context"
 
 // ── Web Speech API types (not in all TS libs) ──────────────────────────────
 interface SpeechRecognitionResultItem { transcript: string; confidence: number }
@@ -39,35 +40,15 @@ type AddVocabPayload = {
   context?: string
 }
 
-const QUICK_TABS: {
-  kind: QuickKind
-  label: string
-  icon: typeof HelpCircle
-  placeholder: string
-  multiline: boolean
-}[] = [
-  {
-    kind: "meaning",
-    label: "뜻이 뭐야?",
-    icon: HelpCircle,
-    placeholder: "예: out of the blue, leverage, hit the nail on the head…",
-    multiline: false,
-  },
-  {
-    kind: "translate",
-    label: "번역해줘",
-    icon: Languages,
-    placeholder: "번역할 영어 문장을 입력…",
-    multiline: true,
-  },
-  {
-    kind: "naturalize",
-    label: "더 자연스럽게",
-    icon: Sparkles,
-    placeholder: "다듬을 영어 문장을 입력…",
-    multiline: true,
-  },
-]
+type QuickTab = { kind: QuickKind; label: string; icon: typeof HelpCircle; placeholder: string; multiline: boolean }
+
+function buildQuickTabs(s: ReturnType<typeof import("@/lib/i18n").t>): QuickTab[] {
+  return [
+    { kind: "meaning", label: s.tutor.meaningLabel, icon: HelpCircle, placeholder: s.tutor.meaningPlaceholder, multiline: false },
+    { kind: "translate", label: s.tutor.translateLabel, icon: Languages, placeholder: s.tutor.translatePlaceholder, multiline: true },
+    { kind: "naturalize", label: s.tutor.naturalizeLabel, icon: Sparkles, placeholder: s.tutor.naturalizePlaceholder, multiline: true },
+  ]
+}
 
 const REGISTER_COLOR: Record<string, string> = {
   Formal: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
@@ -275,10 +256,11 @@ function LookupSkeleton() {
 
 // ── Empty state ────────────────────────────────────────────────────────────
 function EmptyState({ activeQuick }: { activeQuick: QuickKind }) {
+  const { strings } = useLocale()
   const messages: Record<QuickKind, { title: string; desc: string }> = {
-    meaning: { title: "단어·표현 검색", desc: "알고 싶은 영어 단어나 표현을 입력하면\n뜻·뉘앙스·예문을 카드로 보여줄게요." },
-    translate: { title: "번역", desc: "영어 문장을 입력하면\n자연스러운 한국어로 번역해드려요." },
-    naturalize: { title: "표현 개선", desc: "영어 문장을 입력하면\n더 자연스러운 원어민 표현으로 다듬어줘요." },
+    meaning: { title: strings.tutor.meaningLabel, desc: strings.tutor.emptyMeaning },
+    translate: { title: strings.tutor.translateLabel, desc: strings.tutor.emptyTranslate },
+    naturalize: { title: strings.tutor.naturalizeLabel, desc: strings.tutor.emptyNaturalize },
   }
   const { title, desc } = messages[activeQuick]
   return (
@@ -327,7 +309,7 @@ function makePayload(result: LookupResult): AddVocabPayload {
   } else {
     const r = result as import("@/app/api/tutor-lookup/route").NaturalizeResult
     return {
-      word: r.query, type: "expression",
+      word: r.query, type: "rephrase",
       definition: r.improved,
       example_sentence: r.alternatives[0]?.text,
       context: [r.changes, r.alternatives.slice(1).map((a) => `• ${a.text} — ${a.note}`).join("\n")].filter(Boolean).join("\n\n"),
@@ -342,6 +324,8 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
   const [draft, setDraft] = useState("")
   const [isListening, setIsListening] = useState(false)
   const { speak, speakingText } = useTts()
+  const { locale, strings } = useLocale()
+  const QUICK_TABS = buildQuickTabs(strings)
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null)
   const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
@@ -418,7 +402,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
         const res = await fetch("/api/tutor-lookup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, type: kind }),
+          body: JSON.stringify({ text, type: kind, targetLang: locale }),
         })
         const data = (await res.json()) as LookupResult
         setItems((prev) => prev.map((it) => it.id === id ? { ...it, status: "done", result: data } : it))
@@ -472,7 +456,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                 className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
               >
                 <Trash2 className="h-3 w-3" />
-                전체 지우기
+                {strings.tutor.clearAll}
               </button>
             </div>
 
@@ -506,7 +490,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                     <div className="flex items-center gap-2 border-t border-border/40 bg-muted/30 px-4 py-3">
                       {item.savedFlash ? (
                         <div className="flex items-center gap-1.5 text-sm font-medium text-green-600 dark:text-green-400">
-                          <Check className="h-4 w-4" /> 단어장에 저장됐어요!
+                          <Check className="h-4 w-4" /> {strings.tutor.save}!
                         </div>
                       ) : (
                         <>
@@ -517,7 +501,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                               className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
                             >
                               <BookmarkPlus className="h-4 w-4" />
-                              단어장에 저장
+                              {strings.tutor.save}
                             </button>
                           )}
                           <button
@@ -525,7 +509,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                             onClick={() => handlePass(item.id)}
                             className="flex items-center gap-1 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                           >
-                            패스
+                            {strings.tutor.pass}
                             <ChevronRight className="h-4 w-4" />
                           </button>
                         </>

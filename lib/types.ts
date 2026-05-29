@@ -11,8 +11,9 @@ export interface VocabularyItem {
   id: string
   conversation_id: string | null
   word: string
-  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression"
+  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression" | "rephrase"
   source?: "session" | "tutor" | "manual"
+  collection?: string | null
   definition: string | null
   example_sentence: string | null
   korean_translation: string | null
@@ -46,5 +47,14 @@ export interface TutorSession {
   id: string
   title: string
   messages: TutorChatMessage[]
+  created_at: string
+}
+
+export interface StudyResult {
+  id: string
+  type: "upgrade" | "story"
+  title: string
+  content: Record<string, unknown>
+  archived: boolean
   created_at: string
 }

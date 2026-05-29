@@ -11,18 +11,20 @@ import { downloadVocabImage } from "@/lib/vocab-image"
 // ── Constants ──────────────────────────────────────────────────────────────
 export const TYPE_COLORS: Record<string, string> = {
   word:        "bg-primary/10 text-primary border-primary/20",
-  idiom:       "bg-violet-500/10 text-violet-600 border-violet-300 dark:text-violet-400 dark:border-violet-600/40",
-  slang:       "bg-orange-500/10 text-orange-600 border-orange-300 dark:text-orange-400 dark:border-orange-600/40",
-  phrasal_verb:"bg-teal-500/10 text-teal-600 border-teal-300 dark:text-teal-400 dark:border-teal-600/40",
-  expression:  "bg-purple-500/10 text-purple-600 border-purple-200 dark:text-purple-400 dark:border-purple-600/40",
+  idiom:       "bg-primary/10 text-primary border-primary/20",
+  slang:       "bg-primary/10 text-primary border-primary/20",
+  phrasal_verb:"bg-primary/10 text-primary border-primary/20",
+  expression:  "bg-amber-500/10 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-600/40",
+  rephrase:    "bg-teal-500/10 text-teal-700 border-teal-300 dark:text-teal-400 dark:border-teal-600/40",
 }
 
 export const TYPE_LABELS: Record<string, string> = {
   word: "Word",
-  idiom: "Idiom",
-  slang: "Slang",
-  phrasal_verb: "Phrasal",
+  idiom: "Word",
+  slang: "Word",
+  phrasal_verb: "Word",
   expression: "Expression",
+  rephrase: "Rephrase",
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -133,6 +135,11 @@ export function VocabularyCard({
         {item.source && item.source !== "manual" && (
           <span className={cn("rounded-full px-2 py-0 text-[10px] font-medium leading-5", SOURCE_COLORS[item.source] ?? "")}>
             {SOURCE_LABELS[item.source]}
+          </span>
+        )}
+        {item.collection && (
+          <span className="rounded-full border border-violet-400/40 bg-violet-50 px-2 py-0 text-[10px] font-medium leading-5 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+            {item.collection}
           </span>
         )}
         <button

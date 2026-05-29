@@ -32,6 +32,7 @@ create table if not exists public.vocabulary_items (
   word text not null,
   type text not null default 'word',
   source text,
+  collection text,
   definition text,
   example_sentence text,
   korean_translation text,
@@ -39,6 +40,9 @@ create table if not exists public.vocabulary_items (
   is_mastered boolean not null default false,
   created_at timestamptz default now() not null
 );
+
+-- Migration: add collection column if upgrading from older schema
+alter table public.vocabulary_items add column if not exists collection text;
 
 -- Tutor sessions
 create table if not exists public.tutor_sessions (
@@ -48,6 +52,28 @@ create table if not exists public.tutor_sessions (
   messages jsonb not null default '[]',
   created_at timestamptz default now() not null
 );
+
+-- Vocabulary collection layouts (AI organized groupings)
+create table if not exists public.vocabulary_collections (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  created_at timestamptz default now() not null,
+  layout jsonb not null default '[]'
+);
+
+-- Study results (Expression Upgrade & Story)
+create table if not exists public.study_results (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  type text not null check (type in ('upgrade', 'story')),
+  title text not null,
+  content jsonb not null default '{}',
+  archived boolean not null default false,
+  created_at timestamptz default now() not null
+);
+
+-- Migration: add study_results table if upgrading from older schema
+alter table public.study_results add column if not exists archived boolean not null default false;
 
 -- ── Row Level Security ─────────────────────────────────────────────────────
 alter table public.conversations enable row level security;
@@ -65,4 +91,12 @@ create policy "own vocabulary" on public.vocabulary_items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "own tutor sessions" on public.tutor_sessions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+alter table public.study_results enable row level security;
+create policy "own study results" on public.study_results
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+alter table public.vocabulary_collections enable row level security;
+create policy "own vocab collections" on public.vocabulary_collections
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
