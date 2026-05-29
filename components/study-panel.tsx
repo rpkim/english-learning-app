@@ -492,7 +492,10 @@ function StoryMode({
 type QuizCard = VocabularyItem & { result?: "easy" | "hard" }
 type QuizState = "idle" | "running" | "done"
 
-function QuizMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
+function QuizMode({ vocabulary, onMasterItem }: {
+  vocabulary: VocabularyItem[]
+  onMasterItem?: (id: string, currentValue: boolean) => void
+}) {
   const [state, setState] = useState<QuizState>("idle")
   const [cards, setCards] = useState<QuizCard[]>([])
   const [idx, setIdx] = useState(0)
@@ -514,9 +517,17 @@ function QuizMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   }
 
   const grade = (result: "easy" | "hard") => {
+    const current = cards[idx]
     setCards((prev) => prev.map((c, i) => i === idx ? { ...c, result } : c))
-    if (result === "easy") setEasy((n) => n + 1)
-    else setHard((n) => n + 1)
+    if (result === "easy") {
+      setEasy((n) => n + 1)
+      // Mark as mastered in the vocabulary list if not already mastered
+      if (current && !current.is_mastered) {
+        onMasterItem?.(current.id, false)
+      }
+    } else {
+      setHard((n) => n + 1)
+    }
     if (idx + 1 >= cards.length) { setState("done") }
     else { setIdx((n) => n + 1); setRevealed(false) }
   }
@@ -1153,8 +1164,9 @@ function HistoryMode({ results, onArchive, onDelete }: {
 }
 
 // ── Main StudyPanel ─────────────────────────────────────────────────────────
-export function StudyPanel({ vocabulary, className, hidePaddingBottom }: {
+export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBottom }: {
   vocabulary: VocabularyItem[]
+  onMasterItem?: (id: string, currentValue: boolean) => void
   className?: string
   hidePaddingBottom?: boolean
 }) {
@@ -1272,7 +1284,7 @@ export function StudyPanel({ vocabulary, className, hidePaddingBottom }: {
         "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 sm:px-4",
         hidePaddingBottom ? "pb-2" : "pb-4"
       )}>
-        {mode === "quiz" && <QuizMode vocabulary={vocabulary} />}
+        {mode === "quiz" && <QuizMode vocabulary={vocabulary} onMasterItem={onMasterItem} />}
         {mode === "challenge" && <ChallengeMode vocabulary={vocabulary} />}
         {mode === "upgrade" && (
           <UpgradeMode
