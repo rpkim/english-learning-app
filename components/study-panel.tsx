@@ -6,13 +6,14 @@ import {
   Mic, MicOff, Sparkles, ArrowRight, BookOpen, ChevronDown, ChevronUp,
   Loader2, RotateCcw, Volume2, VolumeX, Check, Clock, Archive, Trash2,
   ChevronRight, Brain, Pencil, Trophy, Star, RefreshCw, Eye, EyeOff,
-  ThumbsUp, ThumbsDown, X as XIcon,
+  ThumbsUp, ThumbsDown, X as XIcon, Languages,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { VocabularyItem } from "@/lib/types"
 import type { UpgradeResult } from "@/app/api/study-upgrade/route"
 import type { StoryResult } from "@/app/api/study-story/route"
 import type { ChallengeResult, ChallengeWord } from "@/app/api/study-challenge/route"
+import type { TranslateResult } from "@/app/api/study-translate/route"
 import { useTts } from "@/hooks/use-tts"
 import { useLocale } from "@/lib/locale-context"
 import type { StudyResult } from "@/lib/types"
@@ -1010,7 +1011,312 @@ function ChallengeMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   )
 }
 
-type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "history"
+// ── Translate Practice Mode ───────────────────────────────────────────────────
+type TranslateStep = "input" | "result"
+
+function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
+  const [korean, setKorean] = useState("")
+  const [english, setEnglish] = useState("")
+  const [step, setStep] = useState<TranslateStep>("input")
+  const [result, setResult] = useState<TranslateResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [showBetter, setShowBetter] = useState(false)
+  const [isListeningKo, setIsListeningKo] = useState(false)
+  const [isListeningEn, setIsListeningEn] = useState(false)
+  const recKoRef = useRef<ISpeechRecognition | null>(null)
+  const recEnRef = useRef<ISpeechRecognition | null>(null)
+  const { locale } = useLocale()
+  const { speak, speakingText } = useTts()
+
+  const makeSR = (lang: string, onResult: (t: string) => void, onEnd: () => void) => {
+    const SR =
+      (typeof SpeechRecognition !== "undefined" ? SpeechRecognition : undefined) ??
+      (typeof webkitSpeechRecognition !== "undefined" ? webkitSpeechRecognition : undefined)
+    if (!SR) { alert("음성 인식을 지원하지 않는 브라우저예요."); return null }
+    const rec = new SR()
+    rec.lang = lang; rec.interimResults = true; rec.continuous = false
+    let final = ""
+    rec.onresult = (e) => {
+      let interim = ""
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript
+        else interim = e.results[i][0].transcript
+      }
+      onResult(final + interim)
+    }
+    rec.onend = () => { onEnd(); if (final) onResult(final) }
+    rec.onerror = () => onEnd()
+    return rec
+  }
+
+  const toggleMicKo = () => {
+    if (isListeningKo) { recKoRef.current?.stop(); setIsListeningKo(false); return }
+    const rec = makeSR("ko-KR", setKorean, () => setIsListeningKo(false))
+    if (!rec) return
+    recKoRef.current = rec; rec.start(); setIsListeningKo(true)
+  }
+
+  const toggleMicEn = () => {
+    if (isListeningEn) { recEnRef.current?.stop(); setIsListeningEn(false); return }
+    const rec = makeSR("en-US", setEnglish, () => setIsListeningEn(false))
+    if (!rec) return
+    recEnRef.current = rec; rec.start(); setIsListeningEn(true)
+  }
+
+  const submit = async () => {
+    if (!korean.trim() || !english.trim() || loading) return
+    setLoading(true); setResult(null); setShowBetter(false)
+    try {
+      const vocabPayload = vocabulary.slice(0, 40).map((v) => ({
+        word: v.word, type: v.type, definition: v.definition,
+      }))
+      const res = await fetch("/api/study-translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ korean: korean.trim(), english: english.trim(), vocabulary: vocabPayload, targetLang: locale }),
+      })
+      const data = await res.json() as TranslateResult
+      setResult(data); setStep("result")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const reset = () => { setStep("input"); setResult(null); setShowBetter(false); setEnglish("") }
+  const resetAll = () => { setStep("input"); setResult(null); setShowBetter(false); setKorean(""); setEnglish("") }
+
+  const InputBox = ({
+    value, onChange, placeholder, lang, isListening, onToggleMic, label,
+  }: {
+    value: string; onChange: (v: string) => void; placeholder: string
+    lang: "ko" | "en"; isListening: boolean; onToggleMic: () => void; label: string
+  }) => (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
+      <div className={cn(
+        "relative flex items-end gap-0 rounded-xl border bg-muted/30 transition-all",
+        isListening
+          ? "border-red-400/60 ring-2 ring-red-400/20"
+          : "border-border/40 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10"
+      )}>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={isListening ? "🎤 듣는 중…" : placeholder}
+          rows={lang === "ko" ? 3 : 4}
+          className="min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-relaxed shadow-none focus:outline-none placeholder:text-muted-foreground/40"
+          onKeyDown={(e) => { if (lang === "en" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit() } }}
+        />
+        <button type="button" onClick={onToggleMic} className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-full transition self-end mb-2 mr-2",
+          isListening ? "animate-pulse bg-red-500/15 text-red-500" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        )}>
+          {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Input step always visible at top */}
+      <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4 flex flex-col gap-3">
+        <InputBox
+          value={korean}
+          onChange={setKorean}
+          placeholder="영작하고 싶은 한국어 문장을 입력하세요…"
+          lang="ko"
+          isListening={isListeningKo}
+          onToggleMic={toggleMicKo}
+          label="한국어 원문"
+        />
+        <InputBox
+          value={english}
+          onChange={setEnglish}
+          placeholder="위 문장을 영어로 써보세요…"
+          lang="en"
+          isListening={isListeningEn}
+          onToggleMic={toggleMicEn}
+          label="나의 영작"
+        />
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-[11px] text-muted-foreground/50">⌘+Enter 제출</p>
+          <div className="flex gap-2">
+            {(korean || english) && (
+              <button type="button" onClick={resetAll} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition">
+                <RotateCcw className="h-3.5 w-3.5" />
+                초기화
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={!korean.trim() || !english.trim() || loading}
+              onClick={() => void submit()}
+              className={cn(
+                "flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold transition",
+                korean.trim() && english.trim() && !loading
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              {loading ? <><Loader2 className="h-4 w-4 animate-spin" />분석 중…</> : <><Sparkles className="h-4 w-4" />AI 분석</>}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Result */}
+      {result && (
+        <div className="flex flex-col gap-3">
+          {/* Score header */}
+          <div className={cn(
+            "rounded-2xl border shadow-sm overflow-hidden",
+            result.score >= 8 ? "border-green-500/30 bg-green-500/5" :
+            result.score >= 5 ? "border-amber-500/30 bg-amber-500/5" :
+            "border-border/60 bg-card"
+          )}>
+            <div className="flex items-center gap-4 px-4 py-4">
+              <div className={cn(
+                "flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl font-bold",
+                result.score >= 8 ? "bg-green-500/10 text-green-600 dark:text-green-400" :
+                result.score >= 5 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
+                "bg-muted text-muted-foreground"
+              )}>
+                <span className="text-2xl leading-none">{result.score}</span>
+                <span className="text-[10px]">/ 10</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-snug">{result.explanation}</p>
+                {!result.meaning_ok && result.meaning_note && (
+                  <p className="mt-1.5 text-xs text-destructive">⚠️ {result.meaning_note}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Corrections */}
+          {result.corrections.length > 0 && (
+            <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4">
+              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">교정 사항</p>
+              <div className="flex flex-col gap-2">
+                {result.corrections.map((c, i) => (
+                  <div key={i} className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                      <span className="text-xs text-destructive line-through">{c.original}</span>
+                      <span className="text-[10px] text-muted-foreground">→</span>
+                      <span className="text-xs font-medium">{c.suggestion}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{c.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Better version */}
+          <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4">
+            <button
+              type="button"
+              onClick={() => setShowBetter((p) => !p)}
+              className="flex w-full items-center justify-between text-sm font-semibold"
+            >
+              <span>모범 영작</span>
+              <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showBetter && "rotate-180")} />
+            </button>
+            {showBetter && (
+              <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 text-sm leading-relaxed font-medium">{result.better_version}</p>
+                  <button
+                    type="button"
+                    onClick={() => speak(result.better_version)}
+                    className={cn(
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
+                      speakingText === result.better_version
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/60 text-muted-foreground hover:text-primary"
+                    )}
+                  >
+                    <Volume2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Alternatives */}
+          {result.alternatives.length > 0 && (
+            <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4">
+              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">다른 표현들</p>
+              <div className="flex flex-col gap-2">
+                {result.alternatives.map((alt, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{alt.text}</p>
+                        <button
+                          type="button"
+                          onClick={() => speak(alt.text)}
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
+                            speakingText === alt.text
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border/60 text-muted-foreground hover:text-primary"
+                          )}
+                        >
+                          <Volume2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{alt.note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Vocab tips */}
+          {result.vocab_tips.length > 0 && (
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 shadow-sm p-4">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-violet-500/70">단어장 활용 팁</p>
+              <p className="text-xs text-muted-foreground mb-2">이 문장에 어울리는 내 단어장 단어</p>
+              <div className="flex flex-wrap gap-1.5">
+                {result.vocab_tips.map((w) => (
+                  <div key={w} className="flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1">
+                    <span className="text-xs font-medium text-violet-700 dark:text-violet-300">{w}</span>
+                    <button
+                      type="button"
+                      onClick={() => speak(w)}
+                      className="text-violet-400 hover:text-violet-600"
+                    >
+                      <Volume2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <button type="button" onClick={reset}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-border px-4 py-2 text-sm hover:bg-muted transition">
+              <RotateCcw className="h-3.5 w-3.5" />
+              다시 영작
+            </button>
+            <button type="button" onClick={resetAll}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition">
+              <Languages className="h-3.5 w-3.5" />
+              새 문장
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "translate" | "history"
 
 // ── History Item Card ────────────────────────────────────────────────────────
 function HistoryItemCard({
@@ -1224,8 +1530,9 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
   }
 
   const PRIMARY_MODES: ModeEntry[] = [
-    { key: "quiz",      label: "단어 퀴즈",   icon: Brain,     desc: "플래시카드로 자기 테스트", group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
-    { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점", group: "practice", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+    { key: "quiz",      label: "단어 퀴즈",   icon: Brain,     desc: "플래시카드로 자기 테스트",       group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점",   group: "practice", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+    { key: "translate", label: "영작 연습",   icon: Languages, desc: "한국어 → 영어 영작 후 AI 첨삭", group: "practice", color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
     { key: "upgrade",   label: strings.study.upgradeTitle, icon: ArrowRight, desc: strings.study.upgradeDesc, group: "create", color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
     { key: "story",     label: strings.study.storyTitle,   icon: BookOpen,   desc: strings.study.storyDesc,   group: "create", color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
   ]
@@ -1286,6 +1593,7 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
       )}>
         {mode === "quiz" && <QuizMode vocabulary={vocabulary} onMasterItem={onMasterItem} />}
         {mode === "challenge" && <ChallengeMode vocabulary={vocabulary} />}
+        {mode === "translate" && <TranslateMode vocabulary={vocabulary} />}
         {mode === "upgrade" && (
           <UpgradeMode
             vocabulary={vocabulary}
