@@ -1960,6 +1960,7 @@ export function EnglishLearningApp() {
             >
               <StudyPanel
                 vocabulary={vocabulary}
+                onMasterItem={handleToggleMastered}
                 hidePaddingBottom
               />
             </div>
@@ -2097,6 +2098,7 @@ export function EnglishLearningApp() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "study" ? "flex" : "none" }}>
               <StudyPanel
                 vocabulary={vocabulary}
+                onMasterItem={handleToggleMastered}
                 className="min-h-0 flex-1"
               />
             </div>
