@@ -6,7 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { TranscriptionColumn } from "@/components/transcription-column"
 import { LibraryColumn } from "@/components/library-column"
 import { ConfigDialog } from "@/components/config-dialog"
-import { TutorHistoryPanel } from "@/components/tutor-history-panel"
+import { StudyPanel } from "@/components/study-panel"
 import { ConversationHistory } from "@/components/conversation-history"
 import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
@@ -25,10 +25,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { jsPDF } from "jspdf"
+import { useLocale } from "@/lib/locale-context"
+import { LOCALE_META, LOCALE_ORDER } from "@/lib/i18n"
+import type { AddVocabPayload } from "@/components/add-vocab-dialog"
 import {
   BookOpen,
-  History,
   GraduationCap,
   Loader2,
   AlertCircle,
@@ -66,6 +67,9 @@ import {
   dbGetVocabularyItems,
   dbGetVocabularyByConversation,
   dbCreateVocabularyItem,
+  dbGetCollectionLayout,
+  dbSaveCollectionLayout,
+  type CollectionLayoutItem,
   dbUpdateVocabularyItem,
   dbDeleteVocabularyItem,
   dbGetTutorSessions,
@@ -107,7 +111,7 @@ export function EnglishLearningApp() {
 
   // Vocabulary state
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
-  const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "idiom" | "slang">("all")
+  const [vocabFilter, setVocabFilter] = useState<"all" | "word" | "expression" | "rephrase">("all")
   const [vocabSourceFilter, setVocabSourceFilter] = useState<"all" | "session" | "tutor" | "manual">("all")
   const [vocabView, setVocabView] = useState<"items" | "frequency">("items")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
@@ -137,12 +141,13 @@ export function EnglishLearningApp() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [desktopViewMode, setDesktopViewMode] = useState<"compact" | "full">("full")
   const isMobile = useIsMobile()
-  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "words" | "history" | "tutor">("tutor")
+  const [mobileMainTab, setMobileMainTab] = useState<"capture" | "words" | "study" | "tutor">("tutor")
   const [captureSubTab, setCaptureSubTab] = useState<"record" | "sessions">("record")
   const [desktopCaptureSubTab, setDesktopCaptureSubTab] = useState<"record" | "captures">("record")
-  const [desktopMainTab, setDesktopMainTab] = useState<"tutor" | "capture" | "words" | "history">("tutor")
+  const [desktopMainTab, setDesktopMainTab] = useState<"tutor" | "capture" | "words" | "study">("tutor")
   const [tutorSessions, setTutorSessions] = useState<import("@/lib/types").TutorSession[]>([])
   const { resolvedTheme, setTheme } = useTheme()
+  const { locale, setLocale, strings } = useLocale()
 
   // Transcription hook
   const { status, loadingProgress, loadingFile, transcript, interimTranscript, isRecording, duration, audioSource, debugInfo, utterances, recordedAudioBlob, isRefining, refineProgress, start, stop, reset, refineTranscript, downloadRecording, setTranscript } =
@@ -173,16 +178,32 @@ export function EnglishLearningApp() {
     if (!user) return
     const load = async () => {
       try {
-        const [convs, groups, vocab, sessions] = await Promise.all([
+        const [convs, groups, vocab, sessions, layout] = await Promise.all([
           dbGetConversations(),
           dbGetConversationGroups(),
           dbGetVocabularyItems(),
           dbGetTutorSessions(),
+          dbGetCollectionLayout(),
         ])
         setConversations(convs)
         setConversationGroups(groups)
-        setVocabulary(vocab)
         setTutorSessions(sessions)
+
+        // Re-apply saved collection layout to vocab items that don't already have a collection
+        if (layout && layout.length > 0) {
+          const wordLabelMap: Record<string, string> = {}
+          for (const col of layout) {
+            const label = `${col.emoji} ${col.name}`
+            for (const w of col.words) wordLabelMap[w.toLowerCase()] = label
+          }
+          setVocabulary(vocab.map((v) => {
+            if (v.collection) return v // already has a saved collection from DB
+            const label = wordLabelMap[v.word.toLowerCase()]
+            return label ? { ...v, collection: label } : v
+          }))
+        } else {
+          setVocabulary(vocab)
+        }
       } catch (err) {
         console.error("Failed to load data:", err)
       }
@@ -523,6 +544,35 @@ export function EnglishLearningApp() {
     },
     [currentConversationId]
   )
+
+  // Add vocab items from the AddVocabDialog (single or bulk)
+  const handleAddVocabItems = useCallback(async (items: AddVocabPayload[]) => {
+    try {
+      const saved = await Promise.all(
+        items.map((item) =>
+          dbCreateVocabularyItem({
+            conversation_id: null,
+            word: item.word,
+            type: normalizeVocabType(item.type),
+            source: "manual",
+            definition: item.definition ?? null,
+            example_sentence: item.example_sentence ?? null,
+            korean_translation: item.korean_translation ?? null,
+            context: item.context ?? null,
+            is_mastered: false,
+          })
+        )
+      )
+      setVocabulary((prev) => [...saved, ...prev])
+      toast.success(saved.length === 1
+        ? `"${saved[0].word}" 단어장에 추가됐어요!`
+        : `${saved.length}개 단어가 추가됐어요!`
+      )
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+    }
+  }, [])
 
   // Delete vocabulary item
   const handleDelete = useCallback((id: string) => {
@@ -922,14 +972,15 @@ export function EnglishLearningApp() {
   const tutorVocabCount = useMemo(() => vocabulary.filter((v) => v.source === "tutor").length, [vocabulary])
 
   const masteredCount = sourceScopedVocabulary.filter((v) => v.is_mastered).length
-  const wordCount = sourceScopedVocabulary.filter((v) => v.type === "word").length
-  const idiomCount = sourceScopedVocabulary.filter((v) => v.type === "idiom").length
-  const slangCount = sourceScopedVocabulary.filter((v) => v.type === "slang").length
+  const wordCount = sourceScopedVocabulary.filter((v) => ["word", "idiom", "slang", "phrasal_verb"].includes(v.type)).length
+  const expressionCount = sourceScopedVocabulary.filter((v) => v.type === "expression").length
+  const rephraseCount = sourceScopedVocabulary.filter((v) => v.type === "rephrase").length
   const filteredVocabulary = sourceScopedVocabulary.filter((item) => {
     if (vocabFilter === "all") return true
-    if (vocabFilter === "word") return item.type === "word"
-    if (vocabFilter === "idiom") return item.type === "idiom"
-    return item.type === "slang"
+    if (vocabFilter === "word") return ["word", "idiom", "slang", "phrasal_verb"].includes(item.type)
+    if (vocabFilter === "expression") return item.type === "expression"
+    if (vocabFilter === "rephrase") return item.type === "rephrase"
+    return true
   })
 
   const scopeConversations = useMemo(() => {
@@ -1104,45 +1155,112 @@ export function EnglishLearningApp() {
     }
     setIsExportingPdf(true)
     try {
-      const doc = new jsPDF({ unit: "pt", format: "a4" })
-      const pageWidth = doc.internal.pageSize.getWidth()
-      const pageHeight = doc.internal.pageSize.getHeight()
-      const margin = 36
-      let y = margin
-      doc.setFont("helvetica", "bold")
-      doc.setFontSize(14)
-      doc.text("SurviveEnglish Vocabulary Export", margin, y)
-      y += 18
-      doc.setFont("helvetica", "normal")
-      doc.setFontSize(10)
-      doc.text(`Exported: ${new Date().toLocaleString()}`, margin, y)
-      y += 18
+      // Dynamically import to keep bundle small
+      const [{ jsPDF }, html2canvas] = await Promise.all([
+        import("jspdf"),
+        import("html2canvas").then((m) => m.default),
+      ])
+
+      // ── Build off-screen HTML ────────────────────────────────────────────
+      const TYPE_LABELS: Record<string, string> = {
+        word: "Word", idiom: "Idiom", slang: "Slang",
+        phrasal_verb: "Phrasal verb", expression: "Expression", rephrase: "Rephrase",
+      }
+
+      const wrapper = document.createElement("div")
+      wrapper.style.cssText = [
+        "position:fixed", "left:-9999px", "top:0",
+        "width:794px",          // A4 at 96 dpi ≈ 794px
+        "background:#ffffff",
+        "font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif",
+        "color:#111827", "font-size:13px", "line-height:1.6",
+        "padding:40px",
+      ].join(";")
+
+      // Header
+      wrapper.innerHTML = `
+        <div style="margin-bottom:24px;border-bottom:2px solid #e5e7eb;padding-bottom:12px">
+          <div style="font-size:22px;font-weight:700;color:#111827">단어장 내보내기</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:4px">${new Date().toLocaleString()} · ${filteredVocabulary.length}개 단어</div>
+        </div>
+      `
 
       for (const item of filteredVocabulary) {
-        const lines = [
-          `${item.word} (${item.type})${item.is_mastered ? " [mastered]" : ""}`,
-          item.korean_translation ? `KR: ${item.korean_translation}` : "",
-          item.definition ? `Meaning: ${item.definition}` : "",
-          item.example_sentence ? `Example: ${item.example_sentence}` : "",
-          item.context ? `Context: ${item.context}` : "",
-        ].filter(Boolean)
+        const typeLabel = TYPE_LABELS[item.type] ?? item.type
+        const card = document.createElement("div")
+        card.style.cssText = [
+          "margin-bottom:16px", "border:1px solid #e5e7eb",
+          "border-radius:12px", "padding:14px 16px",
+          "break-inside:avoid", "page-break-inside:avoid",
+        ].join(";")
 
-        for (const raw of lines) {
-          const wrapped = doc.splitTextToSize(raw, pageWidth - margin * 2)
-          for (const line of wrapped) {
-            if (y > pageHeight - margin) {
-              doc.addPage()
-              y = margin
-            }
-            doc.text(line, margin, y)
-            y += 14
-          }
-        }
-        y += 8
+        const rows: string[] = [
+          `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:18px;font-weight:700">${item.word}</span>
+            <span style="font-size:11px;background:#f3f4f6;border-radius:999px;padding:2px 8px;color:#6b7280">${typeLabel}</span>
+            ${item.is_mastered ? '<span style="font-size:11px;background:#d1fae5;border-radius:999px;padding:2px 8px;color:#065f46">✓ 완료</span>' : ""}
+            ${item.collection ? `<span style="font-size:11px;background:#ede9fe;border-radius:999px;padding:2px 8px;color:#5b21b6">${item.collection}</span>` : ""}
+          </div>`,
+        ]
+
+        if (item.korean_translation) rows.push(
+          `<div style="margin-bottom:4px"><span style="color:#6b7280;font-size:11px">뜻 </span><span style="font-weight:600">${item.korean_translation}</span></div>`
+        )
+        if (item.definition) rows.push(
+          `<div style="margin-bottom:4px;color:#374151">${item.definition}</div>`
+        )
+        if (item.example_sentence) rows.push(
+          `<div style="margin-top:6px;background:#f9fafb;border-left:3px solid #6366f1;padding:6px 10px;border-radius:4px;font-style:italic;color:#4b5563">"${item.example_sentence}"</div>`
+        )
+        if (item.context) rows.push(
+          `<div style="margin-top:4px;font-size:11px;color:#9ca3af">${item.context}</div>`
+        )
+
+        card.innerHTML = rows.join("")
+        wrapper.appendChild(card)
+      }
+
+      document.body.appendChild(wrapper)
+
+      // ── Render to canvas, slice into A4 pages ────────────────────────────
+      const canvas = await html2canvas(wrapper, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        onclone: (clonedDoc) => {
+          // html2canvas cannot parse modern CSS color functions (oklch, lab, lch)
+          // used by Tailwind v3+. Since our wrapper uses only inline hex/rgb styles,
+          // removing all external stylesheets is safe and prevents the parse error.
+          clonedDoc.querySelectorAll('style,link[rel="stylesheet"]').forEach((el) => el.remove())
+        },
+      })
+
+      document.body.removeChild(wrapper)
+
+      const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" })
+      const pdfW = doc.internal.pageSize.getWidth()   // 595.28 pt
+      const pdfH = doc.internal.pageSize.getHeight()  // 841.89 pt
+      const imgW = canvas.width
+      const imgH = canvas.height
+      const ratio = pdfW / imgW          // canvas px → PDF pt
+      const sliceH = Math.floor(pdfH / ratio)  // how many px fit per page
+
+      let srcY = 0
+      while (srcY < imgH) {
+        const h = Math.min(sliceH, imgH - srcY)
+        const pageCanvas = document.createElement("canvas")
+        pageCanvas.width = imgW
+        pageCanvas.height = h
+        pageCanvas.getContext("2d")!.drawImage(canvas, 0, srcY, imgW, h, 0, 0, imgW, h)
+        const dataUrl = pageCanvas.toDataURL("image/jpeg", 0.92)
+        if (srcY > 0) doc.addPage()
+        doc.addImage(dataUrl, "JPEG", 0, 0, pdfW, h * ratio)
+        srcY += h
       }
 
       doc.save(`vocabulary-${new Date().toISOString().slice(0, 10)}.pdf`)
-      toast.success("PDF exported")
+      toast.success("PDF 내보내기 완료")
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to export PDF"
       toast.error(msg)
@@ -1150,6 +1268,75 @@ export function EnglishLearningApp() {
       setIsExportingPdf(false)
     }
   }, [filteredVocabulary])
+
+  const handleOrganizeVocabulary = useCallback(async () => {
+    if (vocabulary.length === 0) return
+    const items = vocabulary.map((v) => ({
+      id: v.id,
+      word: v.word,
+      type: v.type,
+      definition: v.definition,
+      context: v.context,
+      korean_translation: v.korean_translation,
+    }))
+    const res = await fetch("/api/organize-vocabulary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, targetLang: locale }),
+    })
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "")
+      console.error("[organize-vocabulary] API error:", res.status, errBody)
+      toast.error("단어장 정리에 실패했어요. 다시 시도해 주세요.")
+      throw new Error("AI organize failed")
+    }
+    const json = await res.json() as import("@/app/api/organize-vocabulary/route").OrganizeResult
+    const { collections } = json
+
+    if (!collections || collections.length === 0) {
+      toast.error("AI가 단어장을 정리하지 못했어요. 다시 시도해 주세요.")
+      throw new Error("Empty collections returned")
+    }
+
+    // Build word (lowercase) -> "emoji name" label map — word-based matching is more reliable than UUID
+    const wordLabelMap: Record<string, string> = {}
+    for (const col of collections) {
+      const label = `${col.emoji} ${col.name}`
+      for (const w of (col.words ?? [])) wordLabelMap[w.toLowerCase()] = label
+    }
+    console.log("[organize-vocabulary] matched", Object.keys(wordLabelMap).length, "words into", collections.length, "collections")
+
+    // Optimistic local update (by word match)
+    const updated = vocabulary.map((v) => {
+      const label = wordLabelMap[v.word.toLowerCase()]
+      return label !== undefined ? { ...v, collection: label } : v
+    })
+    setVocabulary(updated)
+
+    // Persist each item's collection field to DB
+    void Promise.all(
+      updated
+        .filter((v) => v.collection)
+        .map((v) =>
+          dbUpdateVocabularyItem(v.id, { collection: v.collection }).catch((e) => {
+            console.error("[organize-vocabulary] DB update failed for", v.word, e)
+          })
+        )
+    )
+
+    // Also save the full collection layout separately for reliable restore on reload
+    const layout: CollectionLayoutItem[] = collections.map((col) => ({
+      name: col.name,
+      emoji: col.emoji,
+      description: col.description,
+      words: col.words,
+    }))
+    void dbSaveCollectionLayout(layout).catch((e) => {
+      console.error("[organize-vocabulary] layout save failed:", e)
+    })
+
+    toast.success(`✨ ${collections.length}개 단어장으로 정리됐어요!`)
+  }, [vocabulary, locale])
 
   const handleStartWithSource = useCallback(async (source: AudioInputSource) => {
     setShowStartSourceDialog(false)
@@ -1390,7 +1577,7 @@ export function EnglishLearningApp() {
     </div>
   )
 
-  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "vocabulary" | "tutor" | "tutor-history") => (
+  const renderLibrary = (soloMobile: boolean, mobileActiveTab?: "vocabulary" | "tutor" | "study") => (
     <LibraryColumn
       variant={soloMobile ? "solo" : "split"}
       onCollapseRight={soloMobile ? undefined : collapseRightPanel}
@@ -1428,8 +1615,8 @@ export function EnglishLearningApp() {
       }}
       tutorVocabCount={tutorVocabCount}
       wordCount={wordCount}
-      idiomCount={idiomCount}
-      slangCount={slangCount}
+      expressionCount={expressionCount}
+      rephraseCount={rephraseCount}
       filteredVocabulary={filteredVocabulary}
       frequentWords={frequentWords}
       isLoadingVocab={isLoadingVocab}
@@ -1448,6 +1635,7 @@ export function EnglishLearningApp() {
         setShowManualAdd(true)
         setManualWord("")
       }}
+      onAddVocabItems={handleAddVocabItems}
       onTranslateScoped={() => void handleTranslateScoped()}
       onDeleteVocab={handleDelete}
       onToggleMastered={handleToggleMastered}
@@ -1460,6 +1648,7 @@ export function EnglishLearningApp() {
       onSaveTutorSession={handleSaveTutorSession}
       tutorSessions={tutorSessions}
       onDeleteTutorSession={handleDeleteTutorSession}
+      onOrganizeVocabulary={handleOrganizeVocabulary}
     />
   )
 
@@ -1582,6 +1771,16 @@ export function EnglishLearningApp() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
+                {/* Language options in mobile menu */}
+                <DropdownMenuLabel className="text-[10px] font-normal text-muted-foreground">언어 / Language</DropdownMenuLabel>
+                {LOCALE_ORDER.map((l) => (
+                  <DropdownMenuItem key={l} onClick={() => setLocale(l)} className={cn("text-xs gap-2", locale === l && "font-semibold text-primary")}>
+                    <span>{LOCALE_META[l].flag}</span>
+                    <span>{LOCALE_META[l].label}</span>
+                    {locale === l && <span className="ml-auto text-primary">✓</span>}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-xs" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
                   {resolvedTheme === "dark" ? (
                     <Sun className="mr-2 h-3.5 w-3.5" />
@@ -1614,6 +1813,30 @@ export function EnglishLearningApp() {
           </Button>
 
           {/* Dark mode toggle */}
+          {/* Language selector (desktop) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="hidden sm:flex h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground">
+                <span>{LOCALE_META[locale].flag}</span>
+                <span className="font-medium">{LOCALE_META[locale].label}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuLabel className="text-[10px] font-normal text-muted-foreground">언어 / Language</DropdownMenuLabel>
+              {LOCALE_ORDER.map((l) => (
+                <DropdownMenuItem
+                  key={l}
+                  onClick={() => setLocale(l)}
+                  className={cn("text-xs gap-2", locale === l && "font-semibold text-primary")}
+                >
+                  <span>{LOCALE_META[l].flag}</span>
+                  <span>{LOCALE_META[l].label}</span>
+                  {locale === l && <span className="ml-auto text-primary">✓</span>}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="ghost"
             size="icon"
@@ -1730,14 +1953,13 @@ export function EnglishLearningApp() {
               {renderLibrary(true, mobileMainTab === "words" ? "vocabulary" : mobileMainTab === "tutor" ? "tutor" : undefined)}
             </div>
 
-            {/* Tutor History panel */}
+            {/* Study panel */}
             <div
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
-              style={{ display: mobileMainTab === "history" ? "flex" : "none" }}
+              style={{ display: mobileMainTab === "study" ? "flex" : "none" }}
             >
-              <TutorHistoryPanel
-                sessions={tutorSessions}
-                onDeleteSession={handleDeleteTutorSession}
+              <StudyPanel
+                vocabulary={vocabulary}
                 hidePaddingBottom
               />
             </div>
@@ -1750,19 +1972,17 @@ export function EnglishLearningApp() {
               <div className="grid h-14 grid-cols-4">
                 {(
                   [
-                    { value: "tutor" as const, icon: MessageCircle, label: "Tutor" },
-                    { value: "capture" as const, icon: Mic, label: "Capture" },
-                    { value: "words" as const, icon: BookOpen, label: "Words" },
-                    { value: "history" as const, icon: History, label: "History" },
+                    { value: "tutor" as const, icon: MessageCircle, label: strings.nav.tutor },
+                    { value: "capture" as const, icon: Mic, label: strings.nav.capture },
+                    { value: "words" as const, icon: BookOpen, label: strings.nav.words },
+                    { value: "study" as const, icon: GraduationCap, label: strings.nav.study },
                   ] as const
                 ).map(({ value, icon: Icon, label }) => {
                   const isActive = mobileMainTab === value
                   const badgeCount =
                     value === "words" && !isActive && vocabulary.length > 0
                       ? vocabulary.length
-                      : value === "history" && !isActive && tutorSessions.length > 0
-                        ? tutorSessions.length
-                        : null
+                      : null
                   return (
                     <button
                       key={value}
@@ -1828,16 +2048,15 @@ export function EnglishLearningApp() {
               <div className="flex h-11 items-stretch">
                 {(
                   [
-                    { value: "tutor" as const, icon: MessageCircle, label: "Tutor" },
-                    { value: "capture" as const, icon: Mic, label: "Capture" },
-                    { value: "words" as const, icon: BookOpen, label: "Words" },
-                    { value: "history" as const, icon: History, label: "History" },
+                    { value: "tutor" as const, icon: MessageCircle, label: strings.nav.tutor },
+                    { value: "capture" as const, icon: Mic, label: strings.nav.capture },
+                    { value: "words" as const, icon: BookOpen, label: strings.nav.words },
+                    { value: "study" as const, icon: GraduationCap, label: strings.nav.study },
                   ] as const
                 ).map(({ value, icon: Icon, label }) => {
                   const isActive = desktopMainTab === value
                   const badgeCount =
                     value === "words" && vocabulary.length > 0 ? vocabulary.length
-                    : value === "history" && tutorSessions.length > 0 ? tutorSessions.length
                     : null
                   return (
                     <button
@@ -1875,10 +2094,9 @@ export function EnglishLearningApp() {
               {renderLibrary(true, desktopMainTab === "words" ? "vocabulary" : "tutor")}
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "history" ? "flex" : "none" }}>
-              <TutorHistoryPanel
-                sessions={tutorSessions}
-                onDeleteSession={handleDeleteTutorSession}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "study" ? "flex" : "none" }}>
+              <StudyPanel
+                vocabulary={vocabulary}
                 className="min-h-0 flex-1"
               />
             </div>

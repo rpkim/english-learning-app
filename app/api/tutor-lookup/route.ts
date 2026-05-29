@@ -32,50 +32,59 @@ export interface NaturalizeResult {
 
 export type LookupResult = MeaningResult | TranslateResult | NaturalizeResult
 
-const PROMPTS: Record<LookupType, (text: string) => string> = {
-  meaning: (text) => `You are an English tutor for Korean learners. Given a word or expression, return a JSON object with exactly these fields:
+function buildPrompts(lang: string): Record<LookupType, (text: string) => string> {
+  return {
+    meaning: (text) => `You are an English tutor. Given a word or expression, return a JSON object explaining it in ${lang}.
 {
   "query": "<the original word/expression>",
-  "meaning": "<concise Korean meaning, 1-2 sentences>",
-  "nuance": "<nuance in Korean: context, register, connotation, 2-3 sentences>",
+  "meaning": "<concise meaning in ${lang}, 1-2 sentences>",
+  "nuance": "<nuance in ${lang}: context, register, connotation, 2-3 sentences>",
   "register": "<one of: Formal | Neutral | Casual | Slang | Business>",
   "examples": [
-    { "en": "<example sentence 1>", "ko": "<Korean translation>" },
-    { "en": "<example sentence 2>", "ko": "<Korean translation>" }
+    { "en": "<example sentence 1>", "ko": "<${lang} translation>" },
+    { "en": "<example sentence 2>", "ko": "<${lang} translation>" }
   ],
-  "tips": "<optional helpful tip in Korean, or null>"
+  "tips": "<optional helpful tip in ${lang}, or null>"
 }
 
 Word/expression: "${text}"
 
 Return valid JSON only. No markdown fences.`,
 
-  translate: (text) => `You are an English-to-Korean translator. Given English text, return a JSON object with exactly these fields:
+    translate: (text) => `You are an English-to-${lang} translator. Given English text, return a JSON object with exactly these fields:
 {
   "query": "<original English text>",
-  "translation": "<natural Korean translation>",
+  "translation": "<natural ${lang} translation>",
   "literal": "<literal/word-by-word translation if meaningfully different, otherwise null>",
-  "note": "<helpful Korean note about idioms, tone, or context — or null>"
+  "note": "<helpful ${lang} note about idioms, tone, or context — or null>"
 }
 
 Text: "${text}"
 
 Return valid JSON only. No markdown fences.`,
 
-  naturalize: (text) => `You are a native English speaker helping Korean learners sound more natural. Given an English sentence, return a JSON object with exactly these fields:
+    naturalize: (text) => `You are a native English speaker helping learners sound more natural. Given an English sentence, return a JSON object with exactly these fields:
 {
   "query": "<original sentence>",
   "improved": "<most natural-sounding rewrite>",
   "alternatives": [
-    { "text": "<alternative 1>", "note": "<Korean explanation of tone/usage>" },
-    { "text": "<alternative 2>", "note": "<Korean explanation of tone/usage>" }
+    { "text": "<alternative 1>", "note": "<${lang} explanation of tone/usage>" },
+    { "text": "<alternative 2>", "note": "<${lang} explanation of tone/usage>" }
   ],
-  "changes": "<brief Korean explanation of what changed and why>"
+  "changes": "<brief ${lang} explanation of what changed and why>"
 }
 
 Sentence: "${text}"
 
 Return valid JSON only. No markdown fences.`,
+  }
+}
+
+const LANG_MAP: Record<string, string> = {
+  ko: "Korean",
+  en: "English",
+  ja: "Japanese",
+  es: "Spanish",
 }
 
 export async function POST(request: Request) {
@@ -83,6 +92,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const text = typeof body.text === "string" ? body.text.trim() : ""
     const type = body.type as LookupType
+    const localeCode = typeof body.targetLang === "string" ? body.targetLang : "ko"
+    const lang = LANG_MAP[localeCode] ?? "Korean"
 
     if (!text) return NextResponse.json({ error: "No text provided" }, { status: 400 })
     if (!["meaning", "translate", "naturalize"].includes(type)) {
@@ -94,7 +105,8 @@ export async function POST(request: Request) {
 
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-    const result = await model.generateContent(PROMPTS[type](text))
+    const prompts = buildPrompts(lang)
+    const result = await model.generateContent(prompts[type](text))
     const raw = result.response.text().trim()
 
     const cleaned = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim()

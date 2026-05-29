@@ -3,7 +3,7 @@
  * All functions require an authenticated user (RLS enforced server-side).
  */
 import { getSupabaseClient } from "@/lib/supabase-client"
-import type { Conversation, ConversationGroup, VocabularyItem, TutorSession, TutorChatMessage } from "@/lib/types"
+import type { Conversation, ConversationGroup, VocabularyItem, TutorSession, TutorChatMessage, StudyResult } from "@/lib/types"
 
 // ── Conversations ──────────────────────────────────────────────────────────
 
@@ -219,5 +219,84 @@ export async function dbSaveTutorSession(messages: TutorChatMessage[]): Promise<
 export async function dbDeleteTutorSession(id: string): Promise<void> {
   const sb = getSupabaseClient()
   const { error } = await sb.from("tutor_sessions").delete().eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+// ── Study Results ───────────────────────────────────────────────────────────
+
+export async function dbGetStudyResults(): Promise<StudyResult[]> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("study_results")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) { console.error("[db] study_results:", error.message, error.code); return [] }
+  return (data ?? []) as StudyResult[]
+}
+
+export async function dbCreateStudyResult(
+  type: "upgrade" | "story",
+  title: string,
+  content: Record<string, unknown>
+): Promise<StudyResult> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  const { data, error } = await sb
+    .from("study_results")
+    .insert({ user_id: user.id, type, title, content, archived: false })
+    .select()
+    .single()
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+  return data as StudyResult
+}
+
+export async function dbUpdateStudyResult(
+  id: string,
+  fields: Partial<Pick<StudyResult, "archived">>
+): Promise<void> {
+  const sb = getSupabaseClient()
+  const { error } = await sb.from("study_results").update(fields).eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+export async function dbDeleteStudyResult(id: string): Promise<void> {
+  const sb = getSupabaseClient()
+  const { error } = await sb.from("study_results").delete().eq("id", id)
+  if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+// ── Vocabulary Collection Layout ────────────────────────────────────────────
+
+export type CollectionLayoutItem = {
+  name: string
+  emoji: string
+  description: string
+  words: string[]
+}
+
+export async function dbGetCollectionLayout(): Promise<CollectionLayoutItem[] | null> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("vocabulary_collections")
+    .select("layout")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) { console.error("[db] vocabulary_collections:", error.message, error.code); return null }
+  return (data?.layout ?? null) as CollectionLayoutItem[] | null
+}
+
+export async function dbSaveCollectionLayout(
+  layout: CollectionLayoutItem[]
+): Promise<void> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+  // Upsert: delete old + insert new (single layout per user)
+  await sb.from("vocabulary_collections").delete().eq("user_id", user.id)
+  const { error } = await sb
+    .from("vocabulary_collections")
+    .insert({ user_id: user.id, layout })
   if (error) throw new Error(error.message ?? JSON.stringify(error))
 }

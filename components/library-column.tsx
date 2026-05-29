@@ -6,13 +6,13 @@ import { VocabularyCard } from "@/components/vocabulary-card"
 import { VocabularyDeck } from "@/components/vocabulary-deck"
 import { ConversationHistory } from "@/components/conversation-history"
 import { TutorChatPanel } from "@/components/tutor-chat-panel"
-import { TutorHistoryPanel } from "@/components/tutor-history-panel"
+import { StudyPanel } from "@/components/study-panel"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   BookOpen,
-  History,
+  GraduationCap,
   Plus,
   Globe,
   FileDown,
@@ -24,6 +24,8 @@ import {
   MoreHorizontal,
   LayoutList,
   GalleryHorizontal,
+  Sparkles,
+  X,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -33,6 +35,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/locale-context"
+import { AddVocabDialog, type AddVocabPayload } from "@/components/add-vocab-dialog"
 
 export interface LibraryColumnProps {
   className?: string
@@ -41,7 +45,7 @@ export interface LibraryColumnProps {
   leftCollapsed?: boolean
   onExpandLeft?: () => void
   /** Externally controlled active tab (for mobile bottom nav) */
-  activeTab?: "vocabulary" | "tutor" | "tutor-history"
+  activeTab?: "vocabulary" | "tutor" | "study"
   /** Hide the inner tab bar (when bottom nav handles navigation) */
   hideTabs?: boolean
   scopedVocabulary: VocabularyItem[]
@@ -62,11 +66,11 @@ export interface LibraryColumnProps {
   workspaceStats: Record<string, { totalWords: number; masteredWords: number }>
   vocabView: "items" | "frequency"
   setVocabView: (v: "items" | "frequency") => void
-  vocabFilter: "all" | "word" | "idiom" | "slang"
-  setVocabFilter: (f: "all" | "word" | "idiom" | "slang") => void
+  vocabFilter: "all" | "word" | "expression" | "rephrase"
+  setVocabFilter: (f: "all" | "word" | "expression" | "rephrase") => void
   wordCount: number
-  idiomCount: number
-  slangCount: number
+  expressionCount: number
+  rephraseCount: number
   filteredVocabulary: VocabularyItem[]
   frequentWords: { word: string; count: number }[]
   isLoadingVocab: boolean
@@ -77,6 +81,7 @@ export interface LibraryColumnProps {
   onExportCsv: () => void
   onExportPdf: () => void | Promise<void>
   onShowManualAdd: () => void
+  onAddVocabItems?: (items: AddVocabPayload[]) => Promise<void>
   onTranslateScoped: () => void | Promise<void>
   onDeleteVocab: (id: string) => void | Promise<void>
   onToggleMastered: (id: string, current: boolean) => void | Promise<void>
@@ -92,6 +97,7 @@ export interface LibraryColumnProps {
   vocabSourceFilter: "all" | "session" | "tutor" | "manual"
   setVocabSourceFilter: (f: "all" | "session" | "tutor" | "manual") => void
   tutorVocabCount: number
+  onOrganizeVocabulary?: () => Promise<void>
 }
 
 export function LibraryColumn({
@@ -123,8 +129,8 @@ export function LibraryColumn({
   vocabFilter,
   setVocabFilter,
   wordCount,
-  idiomCount,
-  slangCount,
+  expressionCount,
+  rephraseCount,
   filteredVocabulary,
   frequentWords,
   isLoadingVocab,
@@ -135,6 +141,7 @@ export function LibraryColumn({
   onExportCsv,
   onExportPdf,
   onShowManualAdd,
+  onAddVocabItems,
   onTranslateScoped,
   onDeleteVocab,
   onToggleMastered,
@@ -150,11 +157,16 @@ export function LibraryColumn({
   vocabSourceFilter,
   setVocabSourceFilter,
   tutorVocabCount,
+  onOrganizeVocabulary,
 }: LibraryColumnProps) {
-  const [localTab, setLocalTab] = useState<"vocabulary" | "tutor" | "tutor-history">("tutor")
+  const [localTab, setLocalTab] = useState<"vocabulary" | "tutor" | "study">("tutor")
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const { strings } = useLocale()
   const effectiveTab = activeTab ?? localTab
   const [vocabDisplayView, setVocabDisplayView] = useState<"list" | "deck">("deck")
-  const [hideMastered, setHideMastered] = useState(false)
+  const [hideMastered, setHideMastered] = useState(true)
+  const [isOrganizing, setIsOrganizing] = useState(false)
+  const [collectionFilter, setCollectionFilter] = useState<string | null>(null)
 
   const scopeLabel =
     vocabSourceFilter === "tutor"
@@ -226,11 +238,11 @@ export function LibraryColumn({
           )}
         </TabsTrigger>
         <TabsTrigger
-          value="tutor-history"
+          value="study"
           className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm sm:gap-1.5 sm:px-3"
         >
-          <History className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">History</span>
+          <GraduationCap className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Study</span>
           {tutorSessions.length > 0 && (
             <Badge variant="secondary" className="h-4 min-w-4 rounded-full px-1 text-[9px] leading-none sm:text-[10px]">
               {tutorSessions.length}
@@ -304,14 +316,50 @@ export function LibraryColumn({
             </button>
           </div>
 
+          {onOrganizeVocabulary && filteredVocabulary.length >= 3 && (
+            <button
+              type="button"
+              disabled={isOrganizing}
+              onClick={async () => {
+                setIsOrganizing(true)
+                setCollectionFilter(null)
+                try { await onOrganizeVocabulary() } finally { setIsOrganizing(false) }
+              }}
+              className={cn(
+                "flex h-7 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition-all",
+                isOrganizing
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border/60 bg-muted/40 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              )}
+              title="AI가 단어를 자동으로 단어장으로 정리해줘요"
+            >
+              {isOrganizing
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Sparkles className="h-3 w-3" />}
+              {isOrganizing ? strings.words.organizing : strings.words.organize}
+            </button>
+          )}
+
           <Button
             variant="ghost"
             size="sm"
             className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onClick={onShowManualAdd}
+            onClick={() => onAddVocabItems ? setShowAddDialog(true) : onShowManualAdd()}
           >
             <Plus className="h-3.5 w-3.5" />
             추가
+          </Button>
+
+          {/* PDF download — visible button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => void onExportPdf()}
+            disabled={isExportingPdf || filteredVocabulary.length === 0}
+            title={strings.words.pdfDownload}
+          >
+            {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
           </Button>
 
           <DropdownMenu>
@@ -333,10 +381,6 @@ export function LibraryColumn({
                 <FileDown className="mr-2 h-3.5 w-3.5" />
                 CSV 내보내기
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void onExportPdf()} disabled={isExportingPdf}>
-                {isExportingPdf ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <FileDown className="mr-2 h-3.5 w-3.5" />}
-                PDF 내보내기
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -349,9 +393,9 @@ export function LibraryColumn({
           <>
             {(
               [
-                { key: "all" as const, label: "All" },
-                { key: "session" as const, label: "Session" },
-                { key: "tutor" as const, label: tutorVocabCount > 0 ? `Tutor ${tutorVocabCount}` : "Tutor" },
+                { key: "all" as const, label: strings.words.sourceAll },
+                { key: "session" as const, label: strings.words.sourceSession },
+                { key: "tutor" as const, label: tutorVocabCount > 0 ? `${strings.words.sourceTutor} ${tutorVocabCount}` : strings.words.sourceTutor },
               ]
             ).map(({ key, label }) => (
               <button
@@ -374,10 +418,10 @@ export function LibraryColumn({
         {/* Type filter */}
         {(
           [
-            { key: "all" as const, label: `All ${scopedVocabulary.length}` },
-            { key: "word" as const, label: `Words ${wordCount}` },
-            { key: "idiom" as const, label: `Idioms ${idiomCount}` },
-            { key: "slang" as const, label: `Slang ${slangCount}` },
+            { key: "all" as const, label: `${strings.words.all} ${scopedVocabulary.length}` },
+            { key: "word" as const, label: `${strings.words.words} ${wordCount}` },
+            { key: "expression" as const, label: `${strings.words.expression} ${expressionCount}` },
+            { key: "rephrase" as const, label: `${strings.words.rephrase} ${rephraseCount}` },
           ]
         ).map(({ key, label }) => (
           <button
@@ -394,12 +438,60 @@ export function LibraryColumn({
           </button>
         ))}
       </div>
+
+      {/* Row 3: Collection filter chips (only shown after AI organize) */}
+      {(() => {
+        const collections = [...new Set(filteredVocabulary.map((v) => v.collection).filter(Boolean))] as string[]
+        if (collections.length === 0) return null
+        return (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-1 [scrollbar-width:none]">
+            <span className="shrink-0 text-[10px] text-muted-foreground/60">{strings.words.collection}</span>
+            <button
+              type="button"
+              onClick={() => setCollectionFilter(null)}
+              className={cn(
+                "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                collectionFilter === null
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-transparent text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              )}
+            >
+              {strings.words.collectionAll}
+            </button>
+            {collections.map((col) => (
+              <button
+                key={col}
+                type="button"
+                onClick={() => setCollectionFilter(collectionFilter === col ? null : col)}
+                className={cn(
+                  "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                  collectionFilter === col
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-transparent text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                )}
+              >
+                {col}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCollectionFilter(null)}
+              className="ml-auto shrink-0 flex items-center gap-0.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              title="컬렉션 필터 초기화"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )
+      })()}
     </div>
   )
 
-  const displayedVocabulary = hideMastered
-    ? filteredVocabulary.filter((v) => !v.is_mastered)
-    : filteredVocabulary
+  const displayedVocabulary = (() => {
+    let list = hideMastered ? filteredVocabulary.filter((v) => !v.is_mastered) : filteredVocabulary
+    if (collectionFilter) list = list.filter((v) => v.collection === collectionFilter)
+    return list
+  })()
 
   const vocabBody = (
     <div className="min-h-0 flex-1 overflow-hidden">
@@ -412,10 +504,10 @@ export function LibraryColumn({
           <BookOpen className="h-8 w-8 opacity-20" />
           <p className="max-w-[22ch] text-sm leading-relaxed text-balance">
             {hideMastered && filteredVocabulary.length > 0
-              ? "학습 완료된 단어만 있습니다."
+              ? strings.words.masteredOnly
               : vocabSourceFilter === "tutor"
-                ? "Tutor에서 저장한 단어가 없습니다."
-                : "아직 저장된 단어가 없습니다."}
+                ? strings.words.emptyTutor
+                : strings.words.empty}
           </p>
         </div>
       ) : vocabDisplayView === "deck" ? (
@@ -480,7 +572,7 @@ export function LibraryColumn({
       <Tabs
         value={effectiveTab}
         onValueChange={(v) => {
-          if (!activeTab) setLocalTab(v as "vocabulary" | "tutor" | "tutor-history")
+          if (!activeTab) setLocalTab(v as "vocabulary" | "tutor" | "study")
         }}
         className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
@@ -497,14 +589,22 @@ export function LibraryColumn({
             onSaveSession={onSaveTutorSession}
           />
         </TabsContent>
-        <TabsContent value="tutor-history" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
-          <TutorHistoryPanel
-            sessions={tutorSessions}
-            onDeleteSession={onDeleteTutorSession}
+        <TabsContent value="study" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
+          <StudyPanel
+            vocabulary={filteredVocabulary}
             className="min-h-0 flex-1"
           />
         </TabsContent>
       </Tabs>
+
+      {/* Add Vocab Dialog */}
+      {onAddVocabItems && (
+        <AddVocabDialog
+          open={showAddDialog}
+          onOpenChange={setShowAddDialog}
+          onAddItems={onAddVocabItems}
+        />
+      )}
     </div>
   )
 }
