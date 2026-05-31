@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { VocabularyItem } from "@/lib/types"
-import { CheckCircle2, Circle, Trash2, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe, ImageDown } from "lucide-react"
+import { CheckCircle2, Circle, Trash2, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe, ImageDown, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTts } from "@/hooks/use-tts"
 import { Button } from "@/components/ui/button"
@@ -66,7 +66,7 @@ export interface VocabularyCardProps {
   onDelete: (id: string) => void
   onToggleMastered: (id: string, current: boolean) => void
   onTranslate: (item: VocabularyItem) => void
-  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>) => void | Promise<void>
+  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>) => void | Promise<void>
   isTranslating: boolean
   /** Compact = list view. Full = deck view (no border, renders inline). */
   variant?: "list" | "full"
@@ -90,15 +90,19 @@ export function VocabularyCard({
   const [loadingExamples, setLoadingExamples] = useState(false)
   const [loadingEtymology, setLoadingEtymology] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [viewCount, setViewCount] = useState(item.view_count ?? 0)
+  const [incrementingView, setIncrementingView] = useState(false)
 
   useEffect(() => {
     setExtraExamples(item.extra_examples?.length ? item.extra_examples : null)
     setEtymology(item.etymology ?? null)
     setRelatedForms(item.related_forms ?? null)
+    setViewCount(item.view_count ?? 0)
     setAiError(null)
     setLoadingExamples(false)
     setLoadingEtymology(false)
-  }, [item.id, item.extra_examples, item.etymology, item.related_forms])
+    setIncrementingView(false)
+  }, [item.id, item.extra_examples, item.etymology, item.related_forms, item.view_count])
 
   const koreanText = getKoreanTranslationText(item.korean_translation)
 
@@ -143,6 +147,21 @@ export function VocabularyCard({
     finally {
       if (mode === "examples") setLoadingExamples(false)
       else setLoadingEtymology(false)
+    }
+  }
+
+  const handleIncrementView = async () => {
+    if (!onUpdateItem || incrementingView) return
+    const prev = viewCount
+    const next = prev + 1
+    setViewCount(next)
+    setIncrementingView(true)
+    try {
+      await onUpdateItem(item.id, { view_count: next })
+    } catch {
+      setViewCount(prev)
+    } finally {
+      setIncrementingView(false)
     }
   }
 
@@ -302,6 +321,25 @@ export function VocabularyCard({
             ? <CheckCircle2 className="h-3.5 w-3.5" />
             : <Circle className="h-3.5 w-3.5" />}
           {item.is_mastered ? "학습 완료" : "완료 표시"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void handleIncrementView()}
+          disabled={!onUpdateItem || incrementingView}
+          title="복습 횟수 기록"
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium tabular-nums transition-all",
+            viewCount > 0
+              ? "border-sky-400/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+              : "border-border/60 bg-muted/40 text-muted-foreground hover:border-sky-400/40 hover:bg-sky-500/10 hover:text-sky-600",
+            incrementingView && "opacity-70",
+          )}
+        >
+          {incrementingView
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Eye className="h-3.5 w-3.5" />}
+          {viewCount > 0 ? viewCount : "봤어요"}
         </button>
 
         {/* Download as Instagram image */}

@@ -48,6 +48,7 @@ alter table public.vocabulary_items add column if not exists collection text;
 alter table public.vocabulary_items add column if not exists extra_examples jsonb not null default '[]';
 alter table public.vocabulary_items add column if not exists etymology text;
 alter table public.vocabulary_items add column if not exists related_forms text;
+alter table public.vocabulary_items add column if not exists view_count integer not null default 0;
 
 -- Tutor sessions
 create table if not exists public.tutor_sessions (

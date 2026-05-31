@@ -11,7 +11,7 @@ interface VocabularyDeckProps {
   onDelete: (id: string) => void
   onToggleMastered: (id: string, current: boolean) => void
   onTranslate: (item: VocabularyItem) => void
-  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>) => void | Promise<void>
+  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>) => void | Promise<void>
   translatingId: string | null
   className?: string
 }

@@ -74,7 +74,7 @@ export interface LibraryColumnProps {
   onAddVocabItems?: (items: AddVocabPayload[]) => Promise<void>
   onDeleteVocab: (id: string) => void | Promise<void>
   onToggleMastered: (id: string, current: boolean) => void | Promise<void>
-  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>) => void | Promise<void>
+  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>) => void | Promise<void>
   onTranslate: (item: VocabularyItem) => void | Promise<void>
   translatingId: string | null
   onAddFrequentWord: (word: string) => void | Promise<void>
