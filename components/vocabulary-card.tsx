@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { VocabularyItem } from "@/lib/types"
 import { CheckCircle2, Circle, Trash2, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe, ImageDown } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -66,6 +66,7 @@ export interface VocabularyCardProps {
   onDelete: (id: string) => void
   onToggleMastered: (id: string, current: boolean) => void
   onTranslate: (item: VocabularyItem) => void
+  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>) => void | Promise<void>
   isTranslating: boolean
   /** Compact = list view. Full = deck view (no border, renders inline). */
   variant?: "list" | "full"
@@ -76,16 +77,28 @@ export function VocabularyCard({
   onDelete,
   onToggleMastered,
   onTranslate,
+  onUpdateItem,
   isTranslating,
   variant = "list",
 }: VocabularyCardProps) {
   const { speak, speakingText } = useTts()
-  const [extraExamples, setExtraExamples] = useState<string[] | null>(null)
-  const [etymology, setEtymology] = useState<string | null>(null)
-  const [relatedForms, setRelatedForms] = useState<string | null>(null)
+  const [extraExamples, setExtraExamples] = useState<string[] | null>(
+    item.extra_examples?.length ? item.extra_examples : null,
+  )
+  const [etymology, setEtymology] = useState<string | null>(item.etymology ?? null)
+  const [relatedForms, setRelatedForms] = useState<string | null>(item.related_forms ?? null)
   const [loadingExamples, setLoadingExamples] = useState(false)
   const [loadingEtymology, setLoadingEtymology] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setExtraExamples(item.extra_examples?.length ? item.extra_examples : null)
+    setEtymology(item.etymology ?? null)
+    setRelatedForms(item.related_forms ?? null)
+    setAiError(null)
+    setLoadingExamples(false)
+    setLoadingEtymology(false)
+  }, [item.id, item.extra_examples, item.etymology, item.related_forms])
 
   const koreanText = getKoreanTranslationText(item.korean_translation)
 
@@ -111,9 +124,20 @@ export function VocabularyCard({
           ? data.extra_examples.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
           : []
         setExtraExamples(ex)
+        if (ex.length > 0) {
+          await onUpdateItem?.(item.id, { extra_examples: ex })
+        }
       } else {
-        setEtymology(data?.etymology ?? "")
-        setRelatedForms(data?.related_forms ?? "")
+        const etym = typeof data?.etymology === "string" ? data.etymology.trim() : ""
+        const related = typeof data?.related_forms === "string" ? data.related_forms.trim() : ""
+        setEtymology(etym || null)
+        setRelatedForms(related || null)
+        if (etym || related) {
+          await onUpdateItem?.(item.id, {
+            etymology: etym || null,
+            related_forms: related || null,
+          })
+        }
       }
     } catch { setAiError("Network error") }
     finally {

@@ -74,6 +74,7 @@ export interface LibraryColumnProps {
   onAddVocabItems?: (items: AddVocabPayload[]) => Promise<void>
   onDeleteVocab: (id: string) => void | Promise<void>
   onToggleMastered: (id: string, current: boolean) => void | Promise<void>
+  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>) => void | Promise<void>
   onTranslate: (item: VocabularyItem) => void | Promise<void>
   translatingId: string | null
   onAddFrequentWord: (word: string) => void | Promise<void>
@@ -131,6 +132,7 @@ export function LibraryColumn({
   onAddVocabItems,
   onDeleteVocab,
   onToggleMastered,
+  onUpdateVocab,
   onTranslate,
   translatingId,
   onAddFrequentWord,
@@ -481,6 +483,7 @@ export function LibraryColumn({
           onDelete={onDeleteVocab}
           onToggleMastered={onToggleMastered}
           onTranslate={onTranslate}
+          onUpdateItem={onUpdateVocab}
           translatingId={translatingId}
           className="h-full"
         />
@@ -494,6 +497,7 @@ export function LibraryColumn({
                 onDelete={onDeleteVocab}
                 onToggleMastered={onToggleMastered}
                 onTranslate={onTranslate}
+                onUpdateItem={onUpdateVocab}
                 isTranslating={translatingId === item.id}
                 variant="list"
               />
@@ -558,6 +562,7 @@ export function LibraryColumn({
           <StudyPanel
             vocabulary={filteredVocabulary}
             insightsVocabulary={allVocabulary}
+            quizVocabulary={allVocabulary}
             tutorSessions={tutorSessions}
             onAddRecommendedWord={onAddVocabItems ? (item) => onAddVocabItems([item]) : undefined}
             className="min-h-0 flex-1"

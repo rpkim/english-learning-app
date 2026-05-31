@@ -11,6 +11,7 @@ interface VocabularyDeckProps {
   onDelete: (id: string) => void
   onToggleMastered: (id: string, current: boolean) => void
   onTranslate: (item: VocabularyItem) => void
+  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>) => void | Promise<void>
   translatingId: string | null
   className?: string
 }
@@ -20,6 +21,7 @@ export function VocabularyDeck({
   onDelete,
   onToggleMastered,
   onTranslate,
+  onUpdateItem,
   translatingId,
   className,
 }: VocabularyDeckProps) {
@@ -132,6 +134,7 @@ export function VocabularyDeck({
           )}
         >
           <VocabularyCard
+            key={item.id}
             item={item}
             onDelete={(id) => {
               onDelete(id)
@@ -140,6 +143,7 @@ export function VocabularyDeck({
             }}
             onToggleMastered={onToggleMastered}
             onTranslate={onTranslate}
+            onUpdateItem={onUpdateItem}
             isTranslating={translatingId === item.id}
             variant="full"
           />

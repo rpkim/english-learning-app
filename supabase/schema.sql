@@ -44,6 +44,11 @@ create table if not exists public.vocabulary_items (
 -- Migration: add collection column if upgrading from older schema
 alter table public.vocabulary_items add column if not exists collection text;
 
+-- Deep dive (예문 더 보기 / 어원)
+alter table public.vocabulary_items add column if not exists extra_examples jsonb not null default '[]';
+alter table public.vocabulary_items add column if not exists etymology text;
+alter table public.vocabulary_items add column if not exists related_forms text;
+
 -- Tutor sessions
 create table if not exists public.tutor_sessions (
   id uuid default gen_random_uuid() primary key,

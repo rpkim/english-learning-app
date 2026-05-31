@@ -28,7 +28,7 @@ export interface StudyInsightsResult {
   weak_areas: InsightWeakArea[]
   recommendations: InsightRecommendation[]
   word_topics: string[]
-  next_words: Array<{ word: string; ko: string; reason: string }>
+  next_words: Array<{ word: string; ko: string; reason: string; example?: string }>
 }
 
 interface VocabPayload {
@@ -107,7 +107,7 @@ Analyze patterns across vocabulary AND tutor questions. Return ONLY valid JSON:
   ],
   "word_topics": ["<3-6 topic/theme labels in ${lang} e.g. 비즈니스 회화, 감정 표현>"],
   "next_words": [
-    { "word": "<English>", "ko": "<${lang} meaning>", "reason": "<why learn this next, in ${lang}>" }
+    { "word": "<English>", "ko": "<${lang} meaning>", "reason": "<why learn this next, in ${lang}>", "example": "<one natural example sentence in English using the word>" }
   ]
 }
 
