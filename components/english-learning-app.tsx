@@ -34,11 +34,9 @@ import {
   Loader2,
   AlertCircle,
   Settings2,
-  HardDrive,
+  Cloud,
   Monitor,
   Mic,
-  PanelLeftClose,
-  PanelLeftOpen,
   PanelRightOpen,
   Pin,
   PinOff,
@@ -53,7 +51,7 @@ import {
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
-import { getStorageConfig, saveStorageConfig, StorageConfig, localAsrModelShortLabel } from "@/lib/storage-config"
+import { getStorageConfig, StorageConfig, localAsrModelShortLabel } from "@/lib/storage-config"
 import {
   dbGetConversations,
   dbCreateConversation,
@@ -78,6 +76,7 @@ import {
 } from "@/lib/db"
 import { getSupabaseClient } from "@/lib/supabase-client"
 import { LoginScreen } from "@/components/login-screen"
+import { exportVocabularyPdf } from "@/lib/vocab-pdf"
 import type { User } from "@supabase/supabase-js"
 
 export function EnglishLearningApp() {
@@ -116,7 +115,6 @@ export function EnglishLearningApp() {
   const [vocabView, setVocabView] = useState<"items" | "frequency">("items")
   const [isLoadingVocab, setIsLoadingVocab] = useState(false)
   const [translatingId, setTranslatingId] = useState<string | null>(null)
-  const [isBatchTranslating, setIsBatchTranslating] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   // Manual add state
@@ -559,15 +557,20 @@ export function EnglishLearningApp() {
             example_sentence: item.example_sentence ?? null,
             korean_translation: item.korean_translation ?? null,
             context: item.context ?? null,
-            is_mastered: false,
+            is_mastered: item.is_mastered ?? false,
           })
         )
       )
       setVocabulary((prev) => [...saved, ...prev])
-      toast.success(saved.length === 1
-        ? `"${saved[0].word}" 단어장에 추가됐어요!`
-        : `${saved.length}개 단어가 추가됐어요!`
-      )
+      if (saved.length === 1) {
+        toast.success(
+          saved[0].is_mastered
+            ? `"${saved[0].word}" 완료로 추가됐어요!`
+            : `"${saved[0].word}" 단어장에 추가됐어요!`,
+        )
+      } else {
+        toast.success(`${saved.length}개 단어가 추가됐어요!`)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)
@@ -906,64 +909,6 @@ export function EnglishLearningApp() {
     return vocabulary
   }, [vocabulary, selectedConversationId, activeGroupConversationIds, selectedGroupId, conversationGroups, conversations])
 
-  const handleTranslateScoped = useCallback(async () => {
-    const targets = scopedVocabulary.filter((item) => {
-      if (typeof item.korean_translation !== "string") return true
-      return item.korean_translation.trim().length === 0
-    })
-    if (targets.length === 0) {
-      toast.info("No untranslated items in this scope")
-      return
-    }
-
-    setIsBatchTranslating(true)
-    try {
-      const res = await fetch("/api/translate-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: storageConfig.translationProviderAll,
-          items: targets.map((item) => ({
-            id: item.id,
-            word: item.word,
-            type: item.type,
-            definition: item.definition,
-            example_sentence: item.example_sentence,
-            context: item.context,
-          })),
-        }),
-      })
-      if (!res.ok) throw new Error("Batch translation failed")
-      const data = await res.json()
-      const translations: Record<string, string> = (data?.translations && typeof data.translations === "object")
-        ? data.translations as Record<string, string>
-        : {}
-      const translatedIds = Object.keys(translations).filter((id) => typeof translations[id] === "string" && translations[id].trim())
-      if (translatedIds.length === 0) {
-        toast.info("No translations returned")
-        return
-      }
-
-      for (const id of translatedIds) {
-        void dbUpdateVocabularyItem(id, { korean_translation: translations[id] })
-      }
-
-      setVocabulary((prev) =>
-        prev.map((item) => {
-          const t = translations[item.id]
-          if (!t || !t.trim()) return item
-          return { ...item, korean_translation: t.trim() }
-        })
-      )
-      toast.success(`Translated ${translatedIds.length} item${translatedIds.length > 1 ? "s" : ""}`)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error"
-      toast.error(msg)
-    } finally {
-      setIsBatchTranslating(false)
-    }
-  }, [scopedVocabulary, storageConfig.translationProviderAll])
-
   const sourceScopedVocabulary = useMemo(() => {
     if (vocabSourceFilter === "all") return scopedVocabulary
     return scopedVocabulary.filter((v) => (v.source ?? "session") === vocabSourceFilter)
@@ -1011,7 +956,6 @@ export function EnglishLearningApp() {
   }, [conversationGroups, vocabulary])
 
   const frequentWords = useMemo(() => {
-    const excluded = new Set((storageConfig.topWordExcludes ?? []).map((w) => w.toLowerCase()))
     const stop = new Set([
       "the","a","an","and","or","to","of","in","on","at","for","with","is","are","was","were","be","been","being",
       "it","this","that","these","those","i","you","he","she","we","they","them","his","her","our","their","my","me",
@@ -1022,7 +966,7 @@ export function EnglishLearningApp() {
     for (const conv of scopeConversations) {
       const words = conv.transcript.toLowerCase().match(/[a-z']+/g) ?? []
       for (const w of words) {
-        if (w.length < 3 || stop.has(w) || excluded.has(w)) continue
+        if (w.length < 3 || stop.has(w)) continue
         counts.set(w, (counts.get(w) ?? 0) + 1)
       }
     }
@@ -1030,21 +974,7 @@ export function EnglishLearningApp() {
       .map(([word, count]) => ({ word, count }))
       .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
       .slice(0, 120)
-  }, [scopeConversations, storageConfig.topWordExcludes])
-
-  const handleExcludeTopWord = useCallback((word: string) => {
-    const normalized = word.trim().toLowerCase()
-    if (!normalized) return
-    const prev = storageConfig.topWordExcludes ?? []
-    if (prev.includes(normalized)) return
-    const nextConfig: StorageConfig = {
-      ...storageConfig,
-      topWordExcludes: [...prev, normalized].sort(),
-    }
-    setStorageConfig(nextConfig)
-    saveStorageConfig(nextConfig)
-    toast.success(`Excluded "${normalized}" from Top words`)
-  }, [storageConfig])
+  }, [scopeConversations])
 
   const handleAddFrequentWord = useCallback(async (word: string) => {
     const already = vocabulary.some((v) => v.word.toLowerCase() === word.toLowerCase())
@@ -1119,150 +1049,18 @@ export function EnglishLearningApp() {
     [vocabulary]
   )
 
-  const handleExportCsv = useCallback(() => {
-    if (filteredVocabulary.length === 0) {
-      toast.info("No vocabulary items to export in this scope")
-      return
-    }
-    const header = ["word", "type", "korean_translation", "definition", "example_sentence", "context", "is_mastered"]
-    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`
-    const rows = filteredVocabulary.map((item) => [
-      item.word,
-      item.type,
-      item.korean_translation ?? "",
-      item.definition ?? "",
-      item.example_sentence ?? "",
-      item.context ?? "",
-      item.is_mastered ? "true" : "false",
-    ])
-    const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n")
-    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `vocabulary-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    toast.success("CSV exported")
-  }, [filteredVocabulary])
-
   const handleExportPdf = useCallback(async () => {
     if (filteredVocabulary.length === 0) {
-      toast.info("No vocabulary items to export in this scope")
+      toast.info("내보낼 단어가 없어요")
       return
     }
     setIsExportingPdf(true)
     try {
-      // Dynamically import to keep bundle small
-      const [{ jsPDF }, html2canvas] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas").then((m) => m.default),
-      ])
-
-      // ── Build off-screen HTML ────────────────────────────────────────────
-      const TYPE_LABELS: Record<string, string> = {
-        word: "Word", idiom: "Idiom", slang: "Slang",
-        phrasal_verb: "Phrasal verb", expression: "Expression", rephrase: "Rephrase",
-      }
-
-      const wrapper = document.createElement("div")
-      wrapper.style.cssText = [
-        "position:fixed", "left:-9999px", "top:0",
-        "width:794px",          // A4 at 96 dpi ≈ 794px
-        "background:#ffffff",
-        "font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif",
-        "color:#111827", "font-size:13px", "line-height:1.6",
-        "padding:40px",
-      ].join(";")
-
-      // Header
-      wrapper.innerHTML = `
-        <div style="margin-bottom:24px;border-bottom:2px solid #e5e7eb;padding-bottom:12px">
-          <div style="font-size:22px;font-weight:700;color:#111827">단어장 내보내기</div>
-          <div style="font-size:12px;color:#6b7280;margin-top:4px">${new Date().toLocaleString()} · ${filteredVocabulary.length}개 단어</div>
-        </div>
-      `
-
-      for (const item of filteredVocabulary) {
-        const typeLabel = TYPE_LABELS[item.type] ?? item.type
-        const card = document.createElement("div")
-        card.style.cssText = [
-          "margin-bottom:16px", "border:1px solid #e5e7eb",
-          "border-radius:12px", "padding:14px 16px",
-          "break-inside:avoid", "page-break-inside:avoid",
-        ].join(";")
-
-        const rows: string[] = [
-          `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <span style="font-size:18px;font-weight:700">${item.word}</span>
-            <span style="font-size:11px;background:#f3f4f6;border-radius:999px;padding:2px 8px;color:#6b7280">${typeLabel}</span>
-            ${item.is_mastered ? '<span style="font-size:11px;background:#d1fae5;border-radius:999px;padding:2px 8px;color:#065f46">✓ 완료</span>' : ""}
-            ${item.collection ? `<span style="font-size:11px;background:#ede9fe;border-radius:999px;padding:2px 8px;color:#5b21b6">${item.collection}</span>` : ""}
-          </div>`,
-        ]
-
-        if (item.korean_translation) rows.push(
-          `<div style="margin-bottom:4px"><span style="color:#6b7280;font-size:11px">뜻 </span><span style="font-weight:600">${item.korean_translation}</span></div>`
-        )
-        if (item.definition) rows.push(
-          `<div style="margin-bottom:4px;color:#374151">${item.definition}</div>`
-        )
-        if (item.example_sentence) rows.push(
-          `<div style="margin-top:6px;background:#f9fafb;border-left:3px solid #6366f1;padding:6px 10px;border-radius:4px;font-style:italic;color:#4b5563">"${item.example_sentence}"</div>`
-        )
-        if (item.context) rows.push(
-          `<div style="margin-top:4px;font-size:11px;color:#9ca3af">${item.context}</div>`
-        )
-
-        card.innerHTML = rows.join("")
-        wrapper.appendChild(card)
-      }
-
-      document.body.appendChild(wrapper)
-
-      // ── Render to canvas, slice into A4 pages ────────────────────────────
-      const canvas = await html2canvas(wrapper, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        onclone: (clonedDoc) => {
-          // html2canvas cannot parse modern CSS color functions (oklch, lab, lch)
-          // used by Tailwind v3+. Since our wrapper uses only inline hex/rgb styles,
-          // removing all external stylesheets is safe and prevents the parse error.
-          clonedDoc.querySelectorAll('style,link[rel="stylesheet"]').forEach((el) => el.remove())
-        },
-      })
-
-      document.body.removeChild(wrapper)
-
-      const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" })
-      const pdfW = doc.internal.pageSize.getWidth()   // 595.28 pt
-      const pdfH = doc.internal.pageSize.getHeight()  // 841.89 pt
-      const imgW = canvas.width
-      const imgH = canvas.height
-      const ratio = pdfW / imgW          // canvas px → PDF pt
-      const sliceH = Math.floor(pdfH / ratio)  // how many px fit per page
-
-      let srcY = 0
-      while (srcY < imgH) {
-        const h = Math.min(sliceH, imgH - srcY)
-        const pageCanvas = document.createElement("canvas")
-        pageCanvas.width = imgW
-        pageCanvas.height = h
-        pageCanvas.getContext("2d")!.drawImage(canvas, 0, srcY, imgW, h, 0, 0, imgW, h)
-        const dataUrl = pageCanvas.toDataURL("image/jpeg", 0.92)
-        if (srcY > 0) doc.addPage()
-        doc.addImage(dataUrl, "JPEG", 0, 0, pdfW, h * ratio)
-        srcY += h
-      }
-
-      doc.save(`vocabulary-${new Date().toISOString().slice(0, 10)}.pdf`)
+      await exportVocabularyPdf(filteredVocabulary)
       toast.success("PDF 내보내기 완료")
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to export PDF"
+      console.error("[export-pdf]", err)
+      const msg = err instanceof Error ? err.message : "PDF 내보내기에 실패했어요"
       toast.error(msg)
     } finally {
       setIsExportingPdf(false)
@@ -1349,11 +1147,6 @@ export function EnglishLearningApp() {
     }
     await start(source)
   }, [start])
-
-  const collapseLeftPanel = useCallback(() => {
-    setLeftCollapsed(true)
-    setRightCollapsed(false)
-  }, [])
 
   const collapseRightPanel = useCallback(() => {
     setRightCollapsed(true)
@@ -1459,13 +1252,13 @@ export function EnglishLearningApp() {
             )}
           </button>
         ))}
-        {/* Collapse button */}
         <button
-          onClick={collapseLeftPanel}
+          type="button"
+          onClick={() => setShowConfig(true)}
           className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
-          title="Collapse"
+          title="설정 (음성 인식 모델 등)"
         >
-          <PanelLeftClose className="h-3.5 w-3.5" />
+          <Settings2 className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -1501,9 +1294,8 @@ export function EnglishLearningApp() {
     <TranscriptionColumn
       className="h-full min-h-0 flex-1"
       compactToolbar={isMobile}
-      hasBottomNav={isMobile}
-      showCollapseButton={!isMobile}
-      onCollapseLeft={collapseLeftPanel}
+      hasBottomNav={false}
+      showCollapseButton={false}
       isRecording={isRecording}
       status={status}
       isSaving={isSaving}
@@ -1618,9 +1410,9 @@ export function EnglishLearningApp() {
       expressionCount={expressionCount}
       rephraseCount={rephraseCount}
       filteredVocabulary={filteredVocabulary}
+      allVocabulary={vocabulary}
       frequentWords={frequentWords}
       isLoadingVocab={isLoadingVocab}
-      isBatchTranslating={isBatchTranslating}
       isExportingPdf={isExportingPdf}
       masteredCount={masteredCount}
       onShowAllVocabulary={() => {
@@ -1629,20 +1421,17 @@ export function EnglishLearningApp() {
         setVocabSourceFilter("all")
         void fetchVocabulary()
       }}
-      onExportCsv={handleExportCsv}
       onExportPdf={handleExportPdf}
       onShowManualAdd={() => {
         setShowManualAdd(true)
         setManualWord("")
       }}
       onAddVocabItems={handleAddVocabItems}
-      onTranslateScoped={() => void handleTranslateScoped()}
       onDeleteVocab={handleDelete}
       onToggleMastered={handleToggleMastered}
       onTranslate={handleTranslate}
       translatingId={translatingId}
       onAddFrequentWord={handleAddFrequentWord}
-      onExcludeTopWord={handleExcludeTopWord}
       tutorTranscriptContext={`${transcript} ${interimTranscript}`.trim().slice(0, 12000)}
       onAddVocabularyFromTutor={handleAddVocabularyFromTutor}
       onSaveTutorSession={handleSaveTutorSession}
@@ -1655,14 +1444,14 @@ export function EnglishLearningApp() {
   return (
     <div
       className={cn(
-        "flex flex-col h-dvh max-h-dvh min-h-0 bg-background text-foreground transition-[padding] duration-200",
+        "flex flex-col h-dvh max-h-dvh min-h-0 w-full overflow-hidden overscroll-none bg-background text-foreground transition-[padding] duration-200",
         isRecording && audioSource === "system" ? "pt-14" : "pt-0"
       )}
     >
       {/* Header */}
       <header className={cn(
         "border-border bg-card/90 backdrop-blur-md supports-backdrop-filter:bg-card/80",
-        "flex shrink-0 items-center justify-between gap-2 border-b min-w-0",
+        "sticky top-0 z-40 flex shrink-0 items-center justify-between gap-2 border-b min-w-0",
         "px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-5 sm:py-2.5 sm:pt-2.5"
       )}>
         {/* Brand */}
@@ -1761,8 +1550,10 @@ export function EnglishLearningApp() {
                   {vocabulary.length} words · {masteredCount} mastered
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled className="text-xs">
-                  <HardDrive className="mr-2 h-3.5 w-3.5" />
-                  Local storage
+                  <Cloud className="mr-2 h-3.5 w-3.5" />
+                  {user
+                    ? ((user.user_metadata?.full_name as string | undefined) ?? user.email ?? "클라우드 저장")
+                    : "클라우드 저장"}
                 </DropdownMenuItem>
                 {status === "loading_model" && (
                   <DropdownMenuItem disabled className="text-xs">
@@ -1894,14 +1685,17 @@ export function EnglishLearningApp() {
               </button>
             )}
 
-            {/* Content panels — always mounted, CSS show/hide preserves state */}
-            {/* Capture panel: sub-tabs [Record | Sessions] */}
+            {/* Scrollable content — padded above fixed bottom nav */}
+            <div
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+              style={{ paddingBottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}
+            >
             <div
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
               style={{ display: mobileMainTab === "capture" ? "flex" : "none" }}
             >
               {/* Sub-tab bar */}
-              <div className="flex shrink-0 gap-0 border-b border-border bg-card px-3">
+              <div className="flex shrink-0 items-center gap-0 border-b border-border bg-card px-3">
                 {(["record", "sessions"] as const).map((tab) => (
                   <button
                     key={tab}
@@ -1919,12 +1713,20 @@ export function EnglishLearningApp() {
                     )}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowConfig(true)}
+                  className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+                  title="설정 (음성 인식 모델 등)"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </button>
               </div>
               {/* Sub-tab content */}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: captureSubTab === "record" ? "flex" : "none" }}>
                 {renderTranscription("flex-1 min-h-0")}
               </div>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-16" style={{ display: captureSubTab === "sessions" ? "flex" : "none" }}>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: captureSubTab === "sessions" ? "flex" : "none" }}>
                 <ConversationHistory
                   conversations={conversations}
                   groups={conversationGroups}
@@ -1960,14 +1762,17 @@ export function EnglishLearningApp() {
             >
               <StudyPanel
                 vocabulary={vocabulary}
+                tutorSessions={tutorSessions}
                 onMasterItem={handleToggleMastered}
+                onAddRecommendedWord={(item) => handleAddVocabItems([item])}
                 hidePaddingBottom
               />
             </div>
+            </div>
 
-            {/* Bottom navigation */}
+            {/* Bottom navigation — fixed like native app shell */}
             <nav
-              className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md"
+              className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-md supports-backdrop-filter:bg-card/90"
               style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             >
               <div className="grid h-14 grid-cols-4">
@@ -2098,7 +1903,9 @@ export function EnglishLearningApp() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "study" ? "flex" : "none" }}>
               <StudyPanel
                 vocabulary={vocabulary}
+                tutorSessions={tutorSessions}
                 onMasterItem={handleToggleMastered}
+                onAddRecommendedWord={(item) => handleAddVocabItems([item])}
                 className="min-h-0 flex-1"
               />
             </div>

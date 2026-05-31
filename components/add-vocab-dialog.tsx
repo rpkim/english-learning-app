@@ -24,6 +24,7 @@ export type AddVocabPayload = {
   example_sentence?: string
   korean_translation?: string
   context?: string
+  is_mastered?: boolean
 }
 
 interface AddVocabDialogProps {

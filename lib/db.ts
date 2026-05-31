@@ -224,18 +224,21 @@ export async function dbDeleteTutorSession(id: string): Promise<void> {
 
 // ── Study Results ───────────────────────────────────────────────────────────
 
-export async function dbGetStudyResults(): Promise<StudyResult[]> {
+export async function dbGetStudyResults(): Promise<{ items: StudyResult[]; tableMissing?: boolean }> {
   const sb = getSupabaseClient()
   const { data, error } = await sb
     .from("study_results")
     .select("*")
     .order("created_at", { ascending: false })
-  if (error) { console.error("[db] study_results:", error.message, error.code); return [] }
-  return (data ?? []) as StudyResult[]
+  if (error) {
+    console.error("[db] study_results:", error.message, error.code)
+    return { items: [], tableMissing: error.code === "PGRST205" }
+  }
+  return { items: (data ?? []) as StudyResult[] }
 }
 
 export async function dbCreateStudyResult(
-  type: "upgrade" | "story",
+  type: "upgrade" | "story" | "insights",
   title: string,
   content: Record<string, unknown>
 ): Promise<StudyResult> {
@@ -264,6 +267,53 @@ export async function dbDeleteStudyResult(id: string): Promise<void> {
   const sb = getSupabaseClient()
   const { error } = await sb.from("study_results").delete().eq("id", id)
   if (error) throw new Error(error.message ?? JSON.stringify(error))
+}
+
+export interface SavedInsightsContent {
+  result: {
+    summary?: string
+    level_estimate?: string
+    patterns?: unknown[]
+    weak_areas?: unknown[]
+    recommendations?: unknown[]
+    word_topics?: string[]
+    next_words?: Array<{ word: string; ko: string; reason: string }>
+  }
+  excludeWords?: string[]
+}
+
+/** Latest saved pattern analysis snapshot (one per user). */
+export async function dbGetLatestStudyInsight(): Promise<StudyResult | null> {
+  const sb = getSupabaseClient()
+  const { data, error } = await sb
+    .from("study_results")
+    .select("*")
+    .eq("type", "insights")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    if (error.code === "PGRST205") return null
+    console.error("[db] study insight:", error.message, error.code)
+    return null
+  }
+  return (data as StudyResult) ?? null
+}
+
+/** Replace previous insights snapshot with a new one. */
+export async function dbSaveStudyInsight(
+  result: SavedInsightsContent["result"],
+  excludeWords: string[],
+): Promise<StudyResult> {
+  const sb = getSupabaseClient()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  await sb.from("study_results").delete().eq("user_id", user.id).eq("type", "insights")
+
+  const level = typeof result.level_estimate === "string" ? result.level_estimate : ""
+  const title = level ? `패턴 분석 · ${level}` : "패턴 분석"
+  return dbCreateStudyResult("insights", title, { result, excludeWords })
 }
 
 // ── Vocabulary Collection Layout ────────────────────────────────────────────

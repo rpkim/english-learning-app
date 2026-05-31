@@ -14,26 +14,17 @@ import {
   BookOpen,
   GraduationCap,
   Plus,
-  Globe,
   FileDown,
   Loader2,
   EyeOff,
   PanelRightClose,
   PanelLeftOpen,
   MessageCircle,
-  MoreHorizontal,
   LayoutList,
   GalleryHorizontal,
   Sparkles,
   X,
 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/locale-context"
 import { AddVocabDialog, type AddVocabPayload } from "@/components/add-vocab-dialog"
@@ -72,23 +63,20 @@ export interface LibraryColumnProps {
   expressionCount: number
   rephraseCount: number
   filteredVocabulary: VocabularyItem[]
+  allVocabulary: VocabularyItem[]
   frequentWords: { word: string; count: number }[]
   isLoadingVocab: boolean
-  isBatchTranslating: boolean
   isExportingPdf: boolean
   masteredCount: number
   onShowAllVocabulary: () => void
-  onExportCsv: () => void
   onExportPdf: () => void | Promise<void>
   onShowManualAdd: () => void
   onAddVocabItems?: (items: AddVocabPayload[]) => Promise<void>
-  onTranslateScoped: () => void | Promise<void>
   onDeleteVocab: (id: string) => void | Promise<void>
   onToggleMastered: (id: string, current: boolean) => void | Promise<void>
   onTranslate: (item: VocabularyItem) => void | Promise<void>
   translatingId: string | null
   onAddFrequentWord: (word: string) => void | Promise<void>
-  onExcludeTopWord: (word: string) => void
   tutorTranscriptContext: string
   onAddVocabularyFromTutor?: (payload: { word: string; type: VocabularyItem["type"]; definition?: string; example_sentence?: string; korean_translation?: string; context?: string }) => void
   onSaveTutorSession?: (messages: import("@/lib/types").TutorChatMessage[]) => void
@@ -132,23 +120,20 @@ export function LibraryColumn({
   expressionCount,
   rephraseCount,
   filteredVocabulary,
+  allVocabulary,
   frequentWords,
   isLoadingVocab,
-  isBatchTranslating,
   isExportingPdf,
   masteredCount,
   onShowAllVocabulary,
-  onExportCsv,
   onExportPdf,
   onShowManualAdd,
   onAddVocabItems,
-  onTranslateScoped,
   onDeleteVocab,
   onToggleMastered,
   onTranslate,
   translatingId,
   onAddFrequentWord,
-  onExcludeTopWord,
   tutorTranscriptContext,
   onAddVocabularyFromTutor,
   onSaveTutorSession,
@@ -255,22 +240,24 @@ export function LibraryColumn({
 
   const vocabToolbar = (
     <div className="border-border flex min-w-0 shrink-0 flex-col gap-2 border-b px-3 py-2.5 sm:px-4">
-      {/* Row 1: Scope label + view toggle + actions */}
+      {/* Row 1: Scope label + mastered count */}
       <div className="flex min-w-0 items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          <p className="truncate text-sm font-semibold text-foreground">{scopeLabel}</p>
-          {(showSourceFilterClear || showConversationFilterClear) && (
-            <button onClick={onShowAllVocabulary} className="shrink-0 text-[11px] text-primary hover:underline">
-              전체 보기
-            </button>
-          )}
-          {masteredCount > 0 && (
-            <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-              {masteredCount}/{scopedVocabulary.length} mastered
-            </span>
-          )}
-        </div>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{scopeLabel}</p>
+        {(showSourceFilterClear || showConversationFilterClear) && (
+          <button onClick={onShowAllVocabulary} className="shrink-0 text-[11px] text-primary hover:underline">
+            전체 보기
+          </button>
+        )}
+        {masteredCount > 0 && (
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground tabular-nums">
+            {masteredCount}/{scopedVocabulary.length}
+            <span className="hidden sm:inline"> mastered</span>
+          </span>
+        )}
+      </div>
 
+      {/* Row 2: Actions — scroll horizontally on narrow screens */}
+      <div className="-mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex shrink-0 items-center gap-1">
           {/* Hide mastered toggle */}
           {masteredCount > 0 && (
@@ -279,19 +266,19 @@ export function LibraryColumn({
               onClick={() => setHideMastered((v) => !v)}
               title={hideMastered ? "학습 완료 포함해서 보기" : "학습 완료 숨기기"}
               className={cn(
-                "flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-all",
+                "flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-all",
                 hideMastered
                   ? "border-primary/40 bg-primary/10 text-primary"
                   : "border-border/60 bg-muted/40 text-muted-foreground hover:text-foreground"
               )}
             >
-              <EyeOff className="h-3 w-3" />
+              <EyeOff className="h-3 w-3 shrink-0" />
               완료 {hideMastered ? "숨김" : `${masteredCount}`}
             </button>
           )}
 
           {/* List / Deck view toggle */}
-          <div className="flex rounded-lg border border-border/60 bg-muted/40 p-0.5">
+          <div className="flex shrink-0 rounded-lg border border-border/60 bg-muted/40 p-0.5">
             <button
               type="button"
               onClick={() => setVocabDisplayView("list")}
@@ -343,7 +330,7 @@ export function LibraryColumn({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onAddVocabItems ? setShowAddDialog(true) : onShowManualAdd()}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -354,39 +341,17 @@ export function LibraryColumn({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={() => void onExportPdf()}
             disabled={isExportingPdf || filteredVocabulary.length === 0}
             title={strings.words.pdfDownload}
           >
             {isExportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
           </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem
-                onClick={() => void onTranslateScoped()}
-                disabled={isBatchTranslating}
-              >
-                {isBatchTranslating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Globe className="mr-2 h-3.5 w-3.5" />}
-                전체 번역
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onExportCsv}>
-                <FileDown className="mr-2 h-3.5 w-3.5" />
-                CSV 내보내기
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
-      {/* Row 2: Source + type filters */}
+      {/* Row 3: Source + type filters */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
         {/* Source filter */}
         {scopedVocabulary.length > 0 || vocabSourceFilter !== "all" ? (
@@ -439,7 +404,7 @@ export function LibraryColumn({
         ))}
       </div>
 
-      {/* Row 3: Collection filter chips (only shown after AI organize) */}
+      {/* Row 4: Collection filter chips (only shown after AI organize) */}
       {(() => {
         const collections = [...new Set(filteredVocabulary.map((v) => v.collection).filter(Boolean))] as string[]
         if (collections.length === 0) return null
@@ -592,6 +557,9 @@ export function LibraryColumn({
         <TabsContent value="study" className="m-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
           <StudyPanel
             vocabulary={filteredVocabulary}
+            insightsVocabulary={allVocabulary}
+            tutorSessions={tutorSessions}
+            onAddRecommendedWord={onAddVocabItems ? (item) => onAddVocabItems([item]) : undefined}
             className="min-h-0 flex-1"
           />
         </TabsContent>

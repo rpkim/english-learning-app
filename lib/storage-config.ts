@@ -41,7 +41,6 @@ export interface StorageConfig {
   localAsrModel: LocalAsrModel
   translationProviderRecent: TranslationProvider
   translationProviderAll: TranslationProvider
-  topWordExcludes: string[]
 }
 
 const CONFIG_KEY = "englishlens_storage_config"
@@ -63,7 +62,6 @@ const DEFAULT_CONFIG: StorageConfig = {
   localAsrModel: "whisper-base",
   translationProviderRecent: "gemini",
   translationProviderAll: "translate_api",
-  topWordExcludes: [],
 }
 
 export function getStorageConfig(): StorageConfig {
@@ -79,7 +77,6 @@ export function getStorageConfig(): StorageConfig {
       localAsrModel: migrateToLocalAsrModel(parsedRaw as unknown as Record<string, unknown>),
       translationProviderRecent: parsedRaw.translationProviderRecent ?? parsedRaw.translationProvider ?? "gemini",
       translationProviderAll: parsedRaw.translationProviderAll ?? parsedRaw.translationProvider ?? "translate_api",
-      topWordExcludes: Array.isArray(parsedRaw.topWordExcludes) ? parsedRaw.topWordExcludes : [],
     }
   } catch {
     return DEFAULT_CONFIG
