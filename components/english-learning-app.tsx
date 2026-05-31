@@ -591,6 +591,20 @@ export function EnglishLearningApp() {
     void dbUpdateVocabularyItem(id, next)
   }, [])
 
+  const handleUpdateVocabItem = useCallback(async (
+    id: string,
+    fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>,
+  ) => {
+    try {
+      const updated = await dbUpdateVocabularyItem(id, fields)
+      setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error"
+      toast.error(msg)
+      throw err
+    }
+  }, [])
+
   // Translate to Korean via Gemini
   const handleTranslate = useCallback(async (item: VocabularyItem) => {
     setTranslatingId(item.id)
@@ -1429,6 +1443,7 @@ export function EnglishLearningApp() {
       onAddVocabItems={handleAddVocabItems}
       onDeleteVocab={handleDelete}
       onToggleMastered={handleToggleMastered}
+      onUpdateVocab={handleUpdateVocabItem}
       onTranslate={handleTranslate}
       translatingId={translatingId}
       onAddFrequentWord={handleAddFrequentWord}
@@ -1762,6 +1777,7 @@ export function EnglishLearningApp() {
             >
               <StudyPanel
                 vocabulary={vocabulary}
+                quizVocabulary={vocabulary}
                 tutorSessions={tutorSessions}
                 onMasterItem={handleToggleMastered}
                 onAddRecommendedWord={(item) => handleAddVocabItems([item])}
@@ -1903,6 +1919,7 @@ export function EnglishLearningApp() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ display: desktopMainTab === "study" ? "flex" : "none" }}>
               <StudyPanel
                 vocabulary={vocabulary}
+                quizVocabulary={vocabulary}
                 tutorSessions={tutorSessions}
                 onMasterItem={handleToggleMastered}
                 onAddRecommendedWord={(item) => handleAddVocabItems([item])}

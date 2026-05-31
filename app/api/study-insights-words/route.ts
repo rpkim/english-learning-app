@@ -8,6 +8,7 @@ export interface NextWordRec {
   word: string
   ko: string
   reason: string
+  example?: string
 }
 
 interface VocabPayload {
@@ -49,7 +50,7 @@ ${excludeList}
 Return ONLY valid JSON:
 {
   "next_words": [
-    { "word": "<English>", "ko": "<meaning in ${lang}>", "reason": "<why useful, in ${lang}>" }
+    { "word": "<English>", "ko": "<meaning in ${lang}>", "reason": "<why useful, in ${lang}>", "example": "<one natural example sentence in English>" }
   ]
 }
 
@@ -57,7 +58,8 @@ Rules:
 - Exactly 5 words, all different from exclude list
 - Similar or slightly higher level than learner's vocabulary
 - Mix practical everyday and slightly advanced words
-- ko and reason in ${lang}`
+- ko and reason in ${lang}
+- example must be a natural English sentence using the word`
 
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({

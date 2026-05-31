@@ -497,8 +497,9 @@ function StoryMode({
 type QuizCard = VocabularyItem & { result?: "easy" | "hard" }
 type QuizState = "idle" | "running" | "done"
 
-function QuizMode({ vocabulary, onMasterItem }: {
+function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
   vocabulary: VocabularyItem[]
+  quizVocabulary?: VocabularyItem[]
   onMasterItem?: (id: string, currentValue: boolean) => void
 }) {
   const [state, setState] = useState<QuizState>("idle")
@@ -508,9 +509,19 @@ function QuizMode({ vocabulary, onMasterItem }: {
   const [easy, setEasy] = useState(0)
   const [hard, setHard] = useState(0)
   const [showHardOnly, setShowHardOnly] = useState(false)
+  const [selectedCollection, setSelectedCollection] = useState<string | null>(null)
   const { speak, speakingText } = useTts()
 
-  const pool = vocabulary.filter((v) => !v.is_mastered)
+  const sourceVocab = quizVocabulary ?? vocabulary
+  const collections = useMemo(
+    () => [...new Set(sourceVocab.map((v) => v.collection).filter(Boolean))] as string[],
+    [sourceVocab],
+  )
+  const pool = useMemo(() => {
+    let list = sourceVocab.filter((v) => !v.is_mastered)
+    if (selectedCollection) list = list.filter((v) => v.collection === selectedCollection)
+    return list
+  }, [sourceVocab, selectedCollection])
 
   const startQuiz = (onlyHard = false) => {
     const source = onlyHard
@@ -551,19 +562,57 @@ function QuizMode({ vocabulary, onMasterItem }: {
   }
 
   if (state === "idle") {
+    const quizCount = Math.min(pool.length, 20)
     return (
-      <div className="flex flex-col items-center gap-5 py-8 text-center">
+      <div className="flex flex-col items-center gap-5 py-8 text-center px-2">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <Brain className="h-8 w-8 text-primary" />
         </div>
         <div>
           <p className="font-semibold text-lg">단어 퀴즈</p>
-          <p className="text-sm text-muted-foreground mt-1">{Math.min(pool.length, 20)}개 단어를 플래시카드로 테스트해요</p>
+          <p className="text-sm text-muted-foreground mt-1">{quizCount}개 단어를 플래시카드로 테스트해요</p>
         </div>
+
+        {collections.length > 0 && (
+          <div className="w-full max-w-sm space-y-2 text-left">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">단어장 선택</p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedCollection(null)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  selectedCollection === null
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
+                )}
+              >
+                전체
+              </button>
+              {collections.map((col) => (
+                <button
+                  key={col}
+                  type="button"
+                  onClick={() => setSelectedCollection(col)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    selectedCollection === col
+                      ? "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                      : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {col}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => startQuiz(false)}
-          className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition"
+          disabled={pool.length === 0}
+          className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition disabled:opacity-50"
         >
           <Brain className="h-4 w-4" />
           퀴즈 시작
@@ -1489,8 +1538,9 @@ function InsightsMode({
         word: w.word,
         type: "word",
         korean_translation: w.ko,
-        definition: w.reason,
-        context: asMastered ? "AI 패턴 분석 추천 (이미 숙지)" : "AI 패턴 분석 추천",
+        definition: w.ko,
+        example_sentence: w.example?.trim() || undefined,
+        context: w.reason?.trim() || "AI 패턴 분석 추천",
         is_mastered: asMastered,
       })
       setAddedWords((prev) => new Set(prev).add(key))
@@ -1864,11 +1914,13 @@ function HistoryMode({ results, onArchive, onDelete }: {
 }
 
 // ── Main StudyPanel ─────────────────────────────────────────────────────────
-export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary, onMasterItem, onAddRecommendedWord, className, hidePaddingBottom }: {
+export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary, quizVocabulary, onMasterItem, onAddRecommendedWord, className, hidePaddingBottom }: {
   vocabulary: VocabularyItem[]
   tutorSessions?: TutorSession[]
   /** Full vocab list for pattern analysis (defaults to vocabulary) */
   insightsVocabulary?: VocabularyItem[]
+  /** Full vocab list for quiz collection picker (defaults to vocabulary) */
+  quizVocabulary?: VocabularyItem[]
   onMasterItem?: (id: string, currentValue: boolean) => void
   onAddRecommendedWord?: (item: AddVocabPayload) => Promise<void>
   className?: string
@@ -1997,7 +2049,13 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
         mode === "translate" ? "overflow-hidden" : "overflow-y-auto overscroll-y-contain",
         hidePaddingBottom ? "pb-2" : "pb-4"
       )}>
-        {mode === "quiz" && <QuizMode vocabulary={vocabulary} onMasterItem={onMasterItem} />}
+        {mode === "quiz" && (
+          <QuizMode
+            vocabulary={vocabulary}
+            quizVocabulary={quizVocabulary ?? insightsVocabulary ?? vocabulary}
+            onMasterItem={onMasterItem}
+          />
+        )}
         {mode === "challenge" && <ChallengeMode vocabulary={vocabulary} />}
         {mode === "translate" && <TranslateMode vocabulary={vocabulary} />}
         {mode === "insights" && (
