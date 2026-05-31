@@ -593,7 +593,7 @@ export function EnglishLearningApp() {
 
   const handleUpdateVocabItem = useCallback(async (
     id: string,
-    fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms">>,
+    fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>,
   ) => {
     try {
       const updated = await dbUpdateVocabularyItem(id, fields)

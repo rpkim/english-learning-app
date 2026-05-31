@@ -19,6 +19,7 @@ export interface VocabularyItem {
   korean_translation: string | null
   context: string | null
   is_mastered: boolean
+  view_count?: number
   extra_examples?: string[]
   etymology?: string | null
   related_forms?: string | null
