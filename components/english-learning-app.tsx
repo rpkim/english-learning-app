@@ -597,7 +597,13 @@ export function EnglishLearningApp() {
   ) => {
     try {
       const updated = await dbUpdateVocabularyItem(id, fields)
-      setVocabulary((prev) => prev.map((v) => (v.id === id ? updated : v)))
+      setVocabulary((prev) =>
+        prev.map((v) =>
+          v.id === id
+            ? { ...v, ...updated, is_mastered: v.is_mastered }
+            : v,
+        ),
+      )
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error"
       toast.error(msg)

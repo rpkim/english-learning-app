@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Mic, MicOff, Sparkles, ArrowRight, BookOpen, ChevronDown, ChevronUp,
   Loader2, RotateCcw, Volume2, VolumeX, Check, Clock, Archive, Trash2,
-  ChevronRight, Brain, Pencil, Trophy, Star, RefreshCw, Eye, EyeOff,
+  ChevronRight, ChevronLeft, Brain, Pencil, Trophy, Star, RefreshCw, Eye, EyeOff,
   ThumbsUp, ThumbsDown, X as XIcon, Languages, BarChart3, Target, Lightbulb, Plus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -13,6 +13,7 @@ import type { VocabularyItem, TutorSession } from "@/lib/types"
 import type { StudyInsightsResult } from "@/app/api/study-insights/route"
 import type { NextWordRec } from "@/app/api/study-insights-words/route"
 import type { AddVocabPayload } from "@/components/add-vocab-dialog"
+import { getKoreanTranslationText } from "@/components/vocabulary-card"
 import type { UpgradeResult } from "@/app/api/study-upgrade/route"
 import type { StoryResult } from "@/app/api/study-story/route"
 import type { ChallengeResult, ChallengeWord } from "@/app/api/study-challenge/route"
@@ -493,22 +494,69 @@ function StoryMode({
   )
 }
 
-// ── Quiz Mode ────────────────────────────────────────────────────────────────
+// ── Word Study (암기 + 퀴즈) ─────────────────────────────────────────────────
 type QuizCard = VocabularyItem & { result?: "easy" | "hard" }
-type QuizState = "idle" | "running" | "done"
+type WordStudySubMode = "memorize" | "quiz"
+type WordStudyState = "idle" | "running" | "done"
+
+function CollectionPicker({
+  collections,
+  selectedCollection,
+  onSelect,
+}: {
+  collections: string[]
+  selectedCollection: string | null
+  onSelect: (col: string | null) => void
+}) {
+  if (collections.length === 0) return null
+  return (
+    <div className="w-full max-w-sm space-y-2 text-left">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">단어장 선택</p>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          className={cn(
+            "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+            selectedCollection === null
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
+          )}
+        >
+          전체
+        </button>
+        {collections.map((col) => (
+          <button
+            key={col}
+            type="button"
+            onClick={() => onSelect(col)}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+              selectedCollection === col
+                ? "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {col}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
   vocabulary: VocabularyItem[]
   quizVocabulary?: VocabularyItem[]
   onMasterItem?: (id: string, currentValue: boolean) => void
 }) {
-  const [state, setState] = useState<QuizState>("idle")
+  const [state, setState] = useState<WordStudyState>("idle")
+  const [subMode, setSubMode] = useState<WordStudySubMode | null>(null)
   const [cards, setCards] = useState<QuizCard[]>([])
   const [idx, setIdx] = useState(0)
   const [revealed, setRevealed] = useState(false)
   const [easy, setEasy] = useState(0)
   const [hard, setHard] = useState(0)
-  const [showHardOnly, setShowHardOnly] = useState(false)
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null)
   const { speak, speakingText } = useTts()
 
@@ -517,112 +565,155 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
     () => [...new Set(sourceVocab.map((v) => v.collection).filter(Boolean))] as string[],
     [sourceVocab],
   )
-  const pool = useMemo(() => {
-    let list = sourceVocab.filter((v) => !v.is_mastered)
-    if (selectedCollection) list = list.filter((v) => v.collection === selectedCollection)
-    return list
-  }, [sourceVocab, selectedCollection])
+
+  const filterByCollection = useCallback(
+    (list: VocabularyItem[]) =>
+      selectedCollection ? list.filter((v) => v.collection === selectedCollection) : list,
+    [selectedCollection],
+  )
+
+  const memorizePool = useMemo(
+    () => filterByCollection(sourceVocab),
+    [sourceVocab, filterByCollection],
+  )
+
+  const quizPool = useMemo(
+    () => filterByCollection(sourceVocab.filter((v) => !v.is_mastered)),
+    [sourceVocab, filterByCollection],
+  )
+
+  const exitSession = () => {
+    setState("idle")
+    setSubMode(null)
+    setCards([])
+    setIdx(0)
+    setRevealed(false)
+    setEasy(0)
+    setHard(0)
+  }
+
+  const shuffle = <T,>(list: T[]) => [...list].sort(() => Math.random() - 0.5)
+
+  const startMemorize = () => {
+    if (memorizePool.length === 0) return
+    setCards(shuffle(memorizePool))
+    setIdx(0)
+    setSubMode("memorize")
+    setState("running")
+  }
 
   const startQuiz = (onlyHard = false) => {
     const source = onlyHard
-      ? cards.filter((c) => c.result === "hard")
-      : [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(pool.length, 20))
+      ? shuffle(cards.filter((c) => c.result === "hard"))
+      : shuffle(quizPool).slice(0, Math.min(quizPool.length, 20))
+    if (source.length === 0) return
     setCards(source.map((v) => ({ ...v, result: undefined })))
-    setIdx(0); setRevealed(false); setEasy(0); setHard(0)
-    setState("running"); setShowHardOnly(onlyHard)
+    setIdx(0)
+    setRevealed(false)
+    setEasy(0)
+    setHard(0)
+    setSubMode("quiz")
+    setState(onlyHard ? "running" : "running")
   }
 
   const grade = (result: "easy" | "hard") => {
     const current = cards[idx]
-    setCards((prev) => prev.map((c, i) => i === idx ? { ...c, result } : c))
+    setCards((prev) => prev.map((c, i) => (i === idx ? { ...c, result } : c)))
     if (result === "easy") {
       setEasy((n) => n + 1)
-      // Mark as mastered in the vocabulary list if not already mastered
       if (current && !current.is_mastered) {
         onMasterItem?.(current.id, false)
       }
     } else {
       setHard((n) => n + 1)
     }
-    if (idx + 1 >= cards.length) { setState("done") }
-    else { setIdx((n) => n + 1); setRevealed(false) }
+    if (idx + 1 >= cards.length) setState("done")
+    else {
+      setIdx((n) => n + 1)
+      setRevealed(false)
+    }
   }
 
-  const card = cards[idx]
-  const progress = cards.length ? ((idx) / cards.length) * 100 : 0
+  const goCard = (delta: number) => {
+    setIdx((i) => Math.max(0, Math.min(cards.length - 1, i + delta)))
+  }
 
-  if (pool.length === 0) {
+  useEffect(() => {
+    if (state !== "running" || subMode !== "memorize") return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goCard(-1)
+      if (e.key === "ArrowRight") goCard(1)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [state, subMode, cards.length])
+
+  const card = cards[idx]
+  const progress = cards.length ? (idx / cards.length) * 100 : 0
+
+  if (memorizePool.length === 0 && quizPool.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
         <Brain className="h-8 w-8 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">퀴즈할 단어가 없어요</p>
-        <p className="text-xs text-muted-foreground/60">단어장에 단어를 추가하거나 학습 완료 필터를 해제해 보세요</p>
+        <p className="text-sm text-muted-foreground">학습할 단어가 없어요</p>
+        <p className="text-xs text-muted-foreground/60">단어장에 단어를 추가해 보세요</p>
       </div>
     )
   }
 
   if (state === "idle") {
-    const quizCount = Math.min(pool.length, 20)
     return (
       <div className="flex flex-col items-center gap-5 py-8 text-center px-2">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <Brain className="h-8 w-8 text-primary" />
         </div>
         <div>
-          <p className="font-semibold text-lg">단어 퀴즈</p>
-          <p className="text-sm text-muted-foreground mt-1">{quizCount}개 단어를 플래시카드로 테스트해요</p>
+          <p className="font-semibold text-lg">단어 학습</p>
+          <p className="text-sm text-muted-foreground mt-1">암기로 익히거나, 퀴즈로 테스트해요</p>
         </div>
 
-        {collections.length > 0 && (
-          <div className="w-full max-w-sm space-y-2 text-left">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">단어장 선택</p>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSelectedCollection(null)}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                  selectedCollection === null
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
-                )}
-              >
-                전체
-              </button>
-              {collections.map((col) => (
-                <button
-                  key={col}
-                  type="button"
-                  onClick={() => setSelectedCollection(col)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                    selectedCollection === col
-                      ? "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                      : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {col}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <CollectionPicker
+          collections={collections}
+          selectedCollection={selectedCollection}
+          onSelect={setSelectedCollection}
+        />
 
-        <button
-          type="button"
-          onClick={() => startQuiz(false)}
-          disabled={pool.length === 0}
-          className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition disabled:opacity-50"
-        >
-          <Brain className="h-4 w-4" />
-          퀴즈 시작
-        </button>
+        <div className="flex w-full max-w-sm flex-col gap-2">
+          <button
+            type="button"
+            onClick={startMemorize}
+            disabled={memorizePool.length === 0}
+            className="flex flex-col items-center gap-1 rounded-2xl border border-violet-500/25 bg-violet-500/5 px-4 py-4 text-left transition hover:bg-violet-500/10 disabled:opacity-50"
+          >
+            <div className="flex items-center gap-2 font-semibold text-violet-700 dark:text-violet-300">
+              <BookOpen className="h-4 w-4" />
+              단어 암기
+            </div>
+            <p className="text-xs text-muted-foreground">
+              뜻·예문을 보며 {memorizePool.length}개 카드 넘기기
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => startQuiz(false)}
+            disabled={quizPool.length === 0}
+            className="flex flex-col items-center gap-1 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-4 text-left transition hover:bg-primary/10 disabled:opacity-50"
+          >
+            <div className="flex items-center gap-2 font-semibold text-primary">
+              <Brain className="h-4 w-4" />
+              단어 퀴즈
+            </div>
+            <p className="text-xs text-muted-foreground">
+              뜻 숨김 · {Math.min(quizPool.length, 20)}개 플래시카드 테스트
+            </p>
+          </button>
+        </div>
       </div>
     )
   }
 
-  if (state === "done") {
-    const pct = Math.round((easy / (easy + hard)) * 100)
+  if (state === "done" && subMode === "quiz") {
+    const pct = easy + hard > 0 ? Math.round((easy / (easy + hard)) * 100) : 0
     return (
       <div className="flex flex-col items-center gap-5 py-8 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10">
@@ -632,13 +723,9 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
           <p className="text-2xl font-bold">{pct}%</p>
           <p className="text-sm text-muted-foreground mt-0.5">정답률 ({easy}개 알아요 · {hard}개 어려워요)</p>
         </div>
-
-        {/* Score bar */}
         <div className="w-full max-w-xs rounded-full bg-muted h-2 overflow-hidden">
           <div className="h-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
         </div>
-
-        {/* Missed words */}
         {hard > 0 && (
           <div className="w-full max-w-xs rounded-xl border border-border/60 bg-muted/30 p-3 text-left">
             <p className="text-xs font-semibold text-muted-foreground mb-2">어려웠던 단어 ({hard}개)</p>
@@ -651,7 +738,6 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
             </div>
           </div>
         )}
-
         <div className="flex gap-2">
           {hard > 0 && (
             <button
@@ -671,37 +757,138 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
             <RotateCcw className="h-3.5 w-3.5" />
             전체 다시
           </button>
+          <button
+            type="button"
+            onClick={exitSession}
+            className="rounded-full border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition"
+          >
+            목록
+          </button>
         </div>
       </div>
     )
   }
 
-  // Running state
+  // ── Running: 단어 암기 ──
+  if (subMode === "memorize" && card) {
+    const korean = getKoreanTranslationText(card.korean_translation)
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex-1 rounded-full bg-muted h-1.5 overflow-hidden">
+            <div className="h-full bg-violet-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{idx + 1} / {cards.length}</span>
+          <button type="button" onClick={exitSession} className="shrink-0 text-muted-foreground hover:text-foreground">
+            <XIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+          <div className="rounded-2xl border border-violet-500/20 bg-card shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 pt-4">
+              <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                단어 암기
+              </span>
+              {card.collection && (
+                <span className="text-[10px] text-muted-foreground">{card.collection}</span>
+              )}
+            </div>
+
+            <div className="px-4 py-5 text-center border-b border-border/40">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <p className="text-3xl font-bold">{card.word}</p>
+                <button
+                  type="button"
+                  onClick={() => speak(card.word)}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full border transition-all",
+                    speakingText === card.word
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                  )}
+                >
+                  <Volume2 className="h-4 w-4" />
+                </button>
+              </div>
+              {korean && (
+                <p className="text-lg font-semibold text-foreground">{korean}</p>
+              )}
+              {card.definition && card.definition !== korean && (
+                <p className="text-sm text-muted-foreground mt-1.5">{card.definition}</p>
+              )}
+            </div>
+
+            {card.example_sentence && (
+              <div className="px-4 py-3 border-b border-border/40 bg-primary/5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1">예문</p>
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 text-sm italic leading-relaxed">&ldquo;{card.example_sentence}&rdquo;</p>
+                  <button
+                    type="button"
+                    onClick={() => speak(card.example_sentence!)}
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <Volume2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {card.context && (
+              <div className="px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1">맥락</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">{card.context}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="shrink-0 flex items-center justify-between gap-3 pb-1">
+          <button
+            type="button"
+            onClick={() => goCard(-1)}
+            disabled={idx === 0}
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <p className="text-[11px] text-muted-foreground">좌우로 넘겨요</p>
+          <button
+            type="button"
+            onClick={() => goCard(1)}
+            disabled={idx >= cards.length - 1}
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Running: 단어 퀴즈 ──
   return (
     <div className="flex flex-col gap-4">
-      {/* Progress */}
       <div className="flex items-center gap-2">
         <div className="flex-1 rounded-full bg-muted h-1.5 overflow-hidden">
           <div className="h-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{idx + 1} / {cards.length}</span>
-        <button type="button" onClick={() => setState("idle")} className="shrink-0 text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={exitSession} className="shrink-0 text-muted-foreground hover:text-foreground">
           <XIcon className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Card */}
       {card && (
         <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
-          {/* Type badge */}
           <div className="flex items-center justify-between px-4 pt-4">
-            <span className="rounded-full border border-border/50 px-2.5 py-0.5 text-[10px] text-muted-foreground">{card.type}</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">{easy} 😊 · {hard} 😅</span>
-            </div>
+            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary">
+              단어 퀴즈
+            </span>
+            <span className="text-xs text-muted-foreground">{easy} 😊 · {hard} 😅</span>
           </div>
 
-          {/* Word */}
           <div className="px-4 py-6 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
               <p className="text-3xl font-bold">{card.word}</p>
@@ -712,7 +899,7 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
                   "flex h-8 w-8 items-center justify-center rounded-full border transition-all",
                   speakingText === card.word
                     ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
                 )}
               >
                 <Volume2 className="h-4 w-4" />
@@ -720,12 +907,11 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
             </div>
             {card.example_sentence && !revealed && (
               <p className="text-sm text-muted-foreground/60 italic mt-1">
-                "{card.example_sentence.slice(0, 60)}{card.example_sentence.length > 60 ? "…" : ""}"
+                &ldquo;{card.example_sentence.slice(0, 60)}{card.example_sentence.length > 60 ? "…" : ""}&rdquo;
               </p>
             )}
           </div>
 
-          {/* Reveal / Answer */}
           {!revealed ? (
             <div className="border-t border-border/40 bg-muted/20 px-4 py-3 flex justify-center">
               <button
@@ -739,15 +925,17 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
             </div>
           ) : (
             <div className="border-t border-border/40 bg-muted/20 px-4 py-4 space-y-3">
-              {card.korean_translation && (
-                <p className="text-center font-semibold text-base">{card.korean_translation}</p>
+              {getKoreanTranslationText(card.korean_translation) && (
+                <p className="text-center font-semibold text-base">
+                  {getKoreanTranslationText(card.korean_translation)}
+                </p>
               )}
               {card.definition && (
                 <p className="text-center text-sm text-muted-foreground">{card.definition}</p>
               )}
               {card.example_sentence && (
                 <div className="flex items-start gap-1.5 rounded-lg bg-primary/5 px-3 py-2">
-                  <p className="text-xs italic text-primary/80 flex-1">"{card.example_sentence}"</p>
+                  <p className="text-xs italic text-primary/80 flex-1">&ldquo;{card.example_sentence}&rdquo;</p>
                   <button
                     type="button"
                     onClick={() => speak(card.example_sentence!)}
@@ -755,7 +943,7 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
                       "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all",
                       speakingText === card.example_sentence
                         ? "border-primary bg-primary/10 text-primary"
-                        : "border-border/60 text-muted-foreground hover:text-primary"
+                        : "border-border/60 text-muted-foreground hover:text-primary",
                     )}
                   >
                     <Volume2 className="h-3 w-3" />
@@ -1986,7 +2174,7 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
   }
 
   const PRIMARY_MODES: ModeEntry[] = [
-    { key: "quiz",      label: "단어 퀴즈",   icon: Brain,     desc: "플래시카드로 자기 테스트",       group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { key: "quiz",      label: "단어 학습",   icon: Brain,     desc: "단어 암기 · 플래시카드 퀴즈",   group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
     { key: "insights",  label: "패턴 분석",   icon: BarChart3,  desc: "단어·질문 AI 학습 인사이트", group: "create", color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
     { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점",   group: "practice", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
     { key: "translate", label: "영작 연습",   icon: Languages, desc: "한국어 → 영어 영작 후 AI 첨삭", group: "practice", color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
