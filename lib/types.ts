@@ -52,7 +52,7 @@ export interface TutorSession {
 
 export interface StudyResult {
   id: string
-  type: "upgrade" | "story"
+  type: "upgrade" | "story" | "insights"
   title: string
   content: Record<string, unknown>
   archived: boolean

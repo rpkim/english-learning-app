@@ -284,7 +284,7 @@ function MobileRecordingState({
       </div>
 
       {/* Live transcript */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-20 overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-3 pt-2 pb-3 [-webkit-overflow-scrolling:touch]">
         <TranscriptPanel
           transcript={transcript}
           interimTranscript={interimTranscript}
@@ -455,7 +455,7 @@ function MobileTranscriptState({
       </div>
 
       {/* Scrollable content */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-3 pt-2 pb-20 [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-3 pt-2 pb-3 [-webkit-overflow-scrolling:touch]">
         {/* Recent snippet with translation */}
         {recentSnippet && (
           <div className="mb-3 shrink-0 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3">
@@ -882,7 +882,7 @@ export function TranscriptionColumn({
       {/* Scrollable content area */}
       <div className={cn(
         "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 pt-2 [-webkit-overflow-scrolling:touch] sm:px-4 sm:pb-3",
-        hasBottomNav ? "pb-20" : "pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        hasBottomNav ? "pb-3" : "pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       )}>
         {status === "loading_model" && loadingFile && (
           <div className="shrink-0 rounded-xl border border-border bg-card px-3.5 py-3">

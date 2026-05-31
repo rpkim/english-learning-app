@@ -65,7 +65,7 @@ create table if not exists public.vocabulary_collections (
 create table if not exists public.study_results (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users(id) on delete cascade not null,
-  type text not null check (type in ('upgrade', 'story')),
+  type text not null check (type in ('upgrade', 'story', 'insights')),
   title text not null,
   content jsonb not null default '{}',
   archived boolean not null default false,

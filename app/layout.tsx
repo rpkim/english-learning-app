@@ -13,6 +13,14 @@ export const metadata: Metadata = {
   generator: 'v0.app',
 }
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover' as const,
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -20,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} bg-background`}>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased h-dvh overflow-hidden overscroll-none">
         <Providers>
           {children}
         </Providers>

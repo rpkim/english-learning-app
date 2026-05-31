@@ -58,26 +58,49 @@ export function VocabularyDeck({
     return () => window.removeEventListener("keydown", handler)
   }, [go])
 
-  // Touch swipe
+  // Touch swipe — use non-passive listener so horizontal swipes don't scroll the page
   const touchStartX = useRef<number | null>(null)
   const touchStartY = useRef<number | null>(null)
+  const swipeRef = useRef<HTMLDivElement>(null)
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX
-    touchStartY.current = e.touches[0].clientY
-  }
+  useEffect(() => {
+    const el = swipeRef.current
+    if (!el) return
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null || touchStartY.current === null) return
-    const dx = e.changedTouches[0].clientX - touchStartX.current
-    const dy = e.changedTouches[0].clientY - touchStartY.current
-    // Only trigger if horizontal swipe is dominant and long enough
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
-      go(dx < 0 ? 1 : -1)
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX
+      touchStartY.current = e.touches[0].clientY
     }
-    touchStartX.current = null
-    touchStartY.current = null
-  }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchStartX.current === null || touchStartY.current === null) return
+      const dx = e.touches[0].clientX - touchStartX.current
+      const dy = e.touches[0].clientY - touchStartY.current
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+        e.preventDefault()
+      }
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (touchStartX.current === null || touchStartY.current === null) return
+      const dx = e.changedTouches[0].clientX - touchStartX.current
+      const dy = e.changedTouches[0].clientY - touchStartY.current
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+        go(dx < 0 ? 1 : -1)
+      }
+      touchStartX.current = null
+      touchStartY.current = null
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true })
+    el.addEventListener("touchmove", onTouchMove, { passive: false })
+    el.addEventListener("touchend", onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart)
+      el.removeEventListener("touchmove", onTouchMove)
+      el.removeEventListener("touchend", onTouchEnd)
+    }
+  }, [go])
 
   if (items.length === 0) {
     return (
@@ -96,9 +119,8 @@ export function VocabularyDeck({
     <div className={cn("flex h-full flex-col", className)}>
       {/* Card area — swipeable */}
       <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-4 sm:px-8 md:px-12"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        ref={swipeRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain touch-pan-y px-4 py-4 sm:px-8 md:px-12"
       >
         <div
           className={cn(

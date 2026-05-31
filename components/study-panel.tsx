@@ -1,15 +1,18 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Mic, MicOff, Sparkles, ArrowRight, BookOpen, ChevronDown, ChevronUp,
   Loader2, RotateCcw, Volume2, VolumeX, Check, Clock, Archive, Trash2,
   ChevronRight, Brain, Pencil, Trophy, Star, RefreshCw, Eye, EyeOff,
-  ThumbsUp, ThumbsDown, X as XIcon, Languages,
+  ThumbsUp, ThumbsDown, X as XIcon, Languages, BarChart3, Target, Lightbulb, Plus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { VocabularyItem } from "@/lib/types"
+import type { VocabularyItem, TutorSession } from "@/lib/types"
+import type { StudyInsightsResult } from "@/app/api/study-insights/route"
+import type { NextWordRec } from "@/app/api/study-insights-words/route"
+import type { AddVocabPayload } from "@/components/add-vocab-dialog"
 import type { UpgradeResult } from "@/app/api/study-upgrade/route"
 import type { StoryResult } from "@/app/api/study-story/route"
 import type { ChallengeResult, ChallengeWord } from "@/app/api/study-challenge/route"
@@ -17,7 +20,8 @@ import type { TranslateResult } from "@/app/api/study-translate/route"
 import { useTts } from "@/hooks/use-tts"
 import { useLocale } from "@/lib/locale-context"
 import type { StudyResult } from "@/lib/types"
-import { dbGetStudyResults, dbCreateStudyResult, dbUpdateStudyResult, dbDeleteStudyResult } from "@/lib/db"
+import { dbGetStudyResults, dbCreateStudyResult, dbUpdateStudyResult, dbDeleteStudyResult, dbGetLatestStudyInsight, dbSaveStudyInsight, type SavedInsightsContent } from "@/lib/db"
+import { toast } from "sonner"
 
 // ── Web Speech API types ────────────────────────────────────────────────────
 interface SpeechRecognitionResultItem { transcript: string }
@@ -1086,15 +1090,18 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   const resetAll = () => { setStep("input"); setResult(null); setShowBetter(false); setKorean(""); setEnglish("") }
 
   const InputBox = ({
-    value, onChange, placeholder, lang, isListening, onToggleMic, label,
+    value, onChange, placeholder, lang, isListening, onToggleMic, label, compact, className,
   }: {
     value: string; onChange: (v: string) => void; placeholder: string
     lang: "ko" | "en"; isListening: boolean; onToggleMic: () => void; label: string
+    compact?: boolean
+    className?: string
   }) => (
-    <div className="flex flex-col gap-1">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
+    <div className={cn("flex min-h-0 flex-col gap-1", !compact && className)}>
+      <p className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
       <div className={cn(
-        "relative flex items-end gap-0 rounded-xl border bg-muted/30 transition-all",
+        "relative flex min-h-0 rounded-xl border bg-muted/30 transition-all",
+        !compact && "flex-1",
         isListening
           ? "border-red-400/60 ring-2 ring-red-400/20"
           : "border-border/40 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10"
@@ -1103,12 +1110,15 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={isListening ? "🎤 듣는 중…" : placeholder}
-          rows={lang === "ko" ? 3 : 4}
-          className="min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-relaxed shadow-none focus:outline-none placeholder:text-muted-foreground/40"
+          rows={compact ? 2 : 1}
+          className={cn(
+            "w-full min-h-0 flex-1 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-relaxed shadow-none focus:outline-none placeholder:text-muted-foreground/40",
+            compact && "min-h-[4.5rem]"
+          )}
           onKeyDown={(e) => { if (lang === "en" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit() } }}
         />
         <button type="button" onClick={onToggleMic} className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full transition self-end mb-2 mr-2",
+          "absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full transition",
           isListening ? "animate-pulse bg-red-500/15 text-red-500" : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )}>
           {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -1118,9 +1128,11 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   )
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Input step always visible at top */}
-      <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4 flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className={cn(
+        "flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm p-4 gap-3",
+        result ? "shrink-0" : "min-h-0 flex-1"
+      )}>
         <InputBox
           value={korean}
           onChange={setKorean}
@@ -1129,6 +1141,8 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
           isListening={isListeningKo}
           onToggleMic={toggleMicKo}
           label="한국어 원문"
+          compact={!!result}
+          className="flex-[2]"
         />
         <InputBox
           value={english}
@@ -1138,10 +1152,12 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
           isListening={isListeningEn}
           onToggleMic={toggleMicEn}
           label="나의 영작"
+          compact={!!result}
+          className="flex-[3]"
         />
-        <div className="flex items-center justify-between pt-1">
-          <p className="text-[11px] text-muted-foreground/50">⌘+Enter 제출</p>
-          <div className="flex gap-2">
+        <div className="flex shrink-0 items-center justify-between pt-1">
+          <p className="hidden sm:block text-[11px] text-muted-foreground/50">⌘+Enter 제출</p>
+          <div className="ml-auto flex gap-2">
             {(korean || english) && (
               <button type="button" onClick={resetAll} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition">
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -1165,9 +1181,9 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
         </div>
       </div>
 
-      {/* Result */}
+      {/* Result — scroll only this section after analysis */}
       {result && (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain pt-3">
           {/* Score header */}
           <div className={cn(
             "rounded-2xl border shadow-sm overflow-hidden",
@@ -1316,7 +1332,384 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   )
 }
 
-type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "translate" | "history"
+type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "translate" | "insights" | "history"
+
+function extractTutorQueries(sessions: TutorSession[]) {
+  const out: Array<{ type: "meaning" | "translate" | "naturalize"; query: string }> = []
+  for (const session of sessions) {
+    const assistantMsg = session.messages.find((m) => m.role === "assistant")
+    let lookupType: "meaning" | "translate" | "naturalize" = "meaning"
+    if (assistantMsg) {
+      try {
+        const parsed = JSON.parse(assistantMsg.content) as { type?: string }
+        if (parsed.type === "meaning" || parsed.type === "translate" || parsed.type === "naturalize") {
+          lookupType = parsed.type
+        }
+      } catch { /* plain text */ }
+    } else {
+      const title = session.title.toLowerCase()
+      if (title.includes("번역") || title.includes("translate")) lookupType = "translate"
+      else if (title.includes("자연") || title.includes("natural")) lookupType = "naturalize"
+    }
+    const query = session.messages.find((m) => m.role === "user")?.content.trim()
+    if (query) out.push({ type: lookupType, query })
+  }
+  return out
+}
+
+function InsightsMode({
+  vocabulary,
+  tutorSessions,
+  onAddWord,
+}: {
+  vocabulary: VocabularyItem[]
+  tutorSessions: TutorSession[]
+  onAddWord?: (item: AddVocabPayload) => Promise<void>
+}) {
+  const [result, setResult] = useState<StudyInsightsResult | null>(null)
+  const [nextWords, setNextWords] = useState<NextWordRec[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loadingSaved, setLoadingSaved] = useState(true)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [wordsLoading, setWordsLoading] = useState(false)
+  const [addingWord, setAddingWord] = useState<{ key: string; mastered: boolean } | null>(null)
+  const [addedWords, setAddedWords] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+  const excludeWordsRef = useRef<string[]>([])
+  const { locale } = useLocale()
+
+  const tutorQueries = extractTutorQueries(tutorSessions)
+  const mastered = vocabulary.filter((v) => v.is_mastered).length
+  const canAnalyze = vocabulary.length >= 3 || tutorQueries.length >= 2
+
+  const savedWordSet = useMemo(
+    () => new Set(vocabulary.map((v) => v.word.toLowerCase())),
+    [vocabulary],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    setLoadingSaved(true)
+    dbGetLatestStudyInsight()
+      .then((saved) => {
+        if (cancelled || !saved) return
+        const content = saved.content as unknown as SavedInsightsContent
+        const parsed = content.result as unknown as StudyInsightsResult | undefined
+        if (!parsed?.summary) return
+        setResult(parsed)
+        setNextWords(parsed.next_words ?? [])
+        excludeWordsRef.current = content.excludeWords ?? [
+          ...vocabulary.map((v) => v.word),
+          ...(parsed.next_words ?? []).map((w) => w.word),
+        ]
+        setSavedAt(saved.created_at)
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSaved(false)
+      })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load saved snapshot once on mount
+  }, [])
+
+  const run = async () => {
+    if (!canAnalyze || loading) return
+    setLoading(true); setError(null); setResult(null); setNextWords([]); setSavedAt(null)
+    excludeWordsRef.current = vocabulary.map((v) => v.word)
+    setAddedWords(new Set())
+    try {
+      const res = await fetch("/api/study-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vocabulary: vocabulary.slice(0, 100).map((v) => ({
+            word: v.word, type: v.type, source: v.source, collection: v.collection,
+            is_mastered: v.is_mastered, korean_translation: v.korean_translation, definition: v.definition,
+          })),
+          tutorQueries,
+          targetLang: locale,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "분석 실패")
+      const parsed = data as StudyInsightsResult
+      setResult(parsed)
+      setNextWords(parsed.next_words ?? [])
+      excludeWordsRef.current = [
+        ...excludeWordsRef.current,
+        ...(parsed.next_words ?? []).map((w) => w.word),
+      ]
+      try {
+        const saved = await dbSaveStudyInsight(parsed, excludeWordsRef.current)
+        setSavedAt(saved.created_at)
+      } catch {
+        toast.error("분석 결과 저장에 실패했어요. 결과는 화면에만 표시됩니다.")
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "분석 실패")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refreshWords = async () => {
+    if (wordsLoading) return
+    setWordsLoading(true)
+    try {
+      const res = await fetch("/api/study-insights-words", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vocabulary: vocabulary.slice(0, 60).map((v) => ({
+            word: v.word, type: v.type,
+            korean_translation: v.korean_translation, definition: v.definition,
+          })),
+          topics: result?.word_topics,
+          excludeWords: excludeWordsRef.current,
+          targetLang: locale,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "단어 추천 실패")
+      const words = (data.next_words ?? []) as NextWordRec[]
+      setNextWords(words)
+      excludeWordsRef.current = [...excludeWordsRef.current, ...words.map((w) => w.word)]
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "단어 추천 실패")
+    } finally {
+      setWordsLoading(false)
+    }
+  }
+
+  const handleAddWord = async (w: NextWordRec, asMastered = false) => {
+    const key = w.word.toLowerCase()
+    if (!onAddWord || savedWordSet.has(key) || addedWords.has(key)) return
+    setAddingWord({ key, mastered: asMastered })
+    try {
+      await onAddWord({
+        word: w.word,
+        type: "word",
+        korean_translation: w.ko,
+        definition: w.reason,
+        context: asMastered ? "AI 패턴 분석 추천 (이미 숙지)" : "AI 패턴 분석 추천",
+        is_mastered: asMastered,
+      })
+      setAddedWords((prev) => new Set(prev).add(key))
+    } catch {
+      toast.error("단어 추가에 실패했어요")
+    } finally {
+      setAddingWord(null)
+    }
+  }
+
+  if (!canAnalyze) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <BarChart3 className="h-8 w-8 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">분석할 데이터가 더 필요해요</p>
+        <p className="text-xs text-muted-foreground/60">단어 3개 이상 저장하거나, Tutor에서 2번 이상 질문해 보세요</p>
+      </div>
+    )
+  }
+
+  if (loadingSaved) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
+        <p className="text-xs text-muted-foreground">저장된 분석 불러오는 중…</p>
+      </div>
+    )
+  }
+
+  const savedLabel = savedAt
+    ? new Date(savedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+    : null
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-y-contain">
+      {/* Stats + action */}
+      <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4">
+        <div className="flex flex-wrap gap-2 mb-3">
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium tabular-nums">단어 {vocabulary.length}</span>
+          <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-medium text-green-600 dark:text-green-400 tabular-nums">완료 {mastered}</span>
+          <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 tabular-nums">Tutor {tutorQueries.length}</span>
+        </div>
+        {savedLabel && result && (
+          <p className="mb-2 text-[11px] text-muted-foreground">마지막 분석 · {savedLabel}</p>
+        )}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void run()}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : result ? <RefreshCw className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+          {loading ? "패턴 분석 중…" : result ? "다시 분석하기" : "AI 패턴 분석"}
+        </button>
+        {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      </div>
+
+      {result && (
+        <div className="flex flex-col gap-3 pb-2">
+          {/* Summary */}
+          <div className="rounded-2xl border border-teal-500/25 bg-teal-500/5 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-600/70 dark:text-teal-400/70 mb-1.5">종합 분석</p>
+            <p className="text-sm leading-relaxed">{result.summary}</p>
+            {result.level_estimate && (
+              <p className="mt-2 text-xs font-medium text-teal-700 dark:text-teal-300">📊 {result.level_estimate}</p>
+            )}
+          </div>
+
+          {/* Topics */}
+          {result.word_topics.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {result.word_topics.map((t) => (
+                <span key={t} className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] font-medium">{t}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Patterns */}
+          {result.patterns.length > 0 && (
+            <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4">
+              <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                <BarChart3 className="h-3 w-3" /> 학습 패턴
+              </p>
+              <div className="flex flex-col gap-2">
+                {result.patterns.map((p, i) => (
+                  <div key={i} className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
+                    <p className="text-sm font-medium">{p.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{p.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Weak areas */}
+          {result.weak_areas.length > 0 && (
+            <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
+              <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600/70">
+                <Target className="h-3 w-3" /> 보완할 부분
+              </p>
+              <div className="flex flex-col gap-2">
+                {result.weak_areas.map((w, i) => (
+                  <div key={i} className="rounded-lg border border-amber-500/20 bg-background/60 px-3 py-2">
+                    <p className="text-sm font-medium">{w.area}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{w.evidence}</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">💡 {w.tip}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommendations */}
+          {result.recommendations.length > 0 && (
+            <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-4">
+              <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                <Lightbulb className="h-3 w-3" /> 추천 학습
+              </p>
+              <div className="flex flex-col gap-2">
+                {result.recommendations.map((r, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
+                    <span className={cn(
+                      "mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                      r.priority === "high" ? "bg-red-500/10 text-red-600" :
+                      r.priority === "medium" ? "bg-amber-500/10 text-amber-600" :
+                      "bg-muted text-muted-foreground"
+                    )}>{r.priority}</span>
+                    <div>
+                      <p className="text-sm font-medium">{r.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Next words */}
+          {nextWords.length > 0 && (
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500/70">다음에 배울 단어</p>
+                <button
+                  type="button"
+                  onClick={() => void refreshWords()}
+                  disabled={wordsLoading}
+                  className="flex shrink-0 items-center gap-1 rounded-full border border-violet-500/25 bg-background/80 px-2.5 py-1 text-[10px] font-medium text-violet-600 transition-colors hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300"
+                >
+                  {wordsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  다른 단어 보기?
+                </button>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {nextWords.map((w) => {
+                  const key = w.word.toLowerCase()
+                  const inVocab = savedWordSet.has(key)
+                  const justAdded = addedWords.has(key)
+                  const isAdding = addingWord?.key === key
+                  const isAddingNormal = isAdding && !addingWord.mastered
+                  const isAddingMastered = isAdding && addingWord.mastered
+                  const canAdd = onAddWord && !inVocab && !justAdded
+
+                  return (
+                    <div key={key} className="flex items-start gap-2 rounded-lg border border-violet-500/15 bg-background/60 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-semibold text-sm text-violet-700 dark:text-violet-300 shrink-0">{w.word}</span>
+                          <span className="text-xs font-medium">{w.ko}</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{w.reason}</p>
+                      </div>
+                      {onAddWord && (
+                        <div className="flex shrink-0 flex-col gap-1">
+                          {inVocab || justAdded ? (
+                            <span className="flex items-center justify-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                              <Check className="h-3 w-3" />
+                              추가됨
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleAddWord(w, false)}
+                                disabled={!canAdd || isAdding}
+                                className={cn(
+                                  "flex items-center justify-center gap-1 rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1.5 text-[10px] font-medium text-violet-600 transition-colors hover:bg-violet-500/20 dark:text-violet-300",
+                                  (!canAdd || isAdding) && "opacity-70",
+                                )}
+                              >
+                                {isAddingNormal ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                                단어장에 추가
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleAddWord(w, true)}
+                                disabled={!canAdd || isAdding}
+                                className={cn(
+                                  "flex items-center justify-center gap-1 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-1.5 text-[10px] font-medium text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400",
+                                  (!canAdd || isAdding) && "opacity-70",
+                                )}
+                              >
+                                {isAddingMastered ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                이미 외운 단어 추가
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── History Item Card ────────────────────────────────────────────────────────
 function HistoryItemCard({
@@ -1427,11 +1820,12 @@ function HistoryMode({ results, onArchive, onDelete }: {
 }) {
   const [showArchived, setShowArchived] = useState(false)
 
-  const active = results.filter((r) => !r.archived)
-  const archived = results.filter((r) => r.archived)
-  const displayed = showArchived ? results : active
+  const historyResults = results.filter((r) => r.type !== "insights")
+  const active = historyResults.filter((r) => !r.archived)
+  const archived = historyResults.filter((r) => r.archived)
+  const displayed = showArchived ? historyResults : active
 
-  if (results.length === 0) {
+  if (historyResults.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
         <Clock className="h-8 w-8 text-muted-foreground/30" />
@@ -1470,9 +1864,13 @@ function HistoryMode({ results, onArchive, onDelete }: {
 }
 
 // ── Main StudyPanel ─────────────────────────────────────────────────────────
-export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBottom }: {
+export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary, onMasterItem, onAddRecommendedWord, className, hidePaddingBottom }: {
   vocabulary: VocabularyItem[]
+  tutorSessions?: TutorSession[]
+  /** Full vocab list for pattern analysis (defaults to vocabulary) */
+  insightsVocabulary?: VocabularyItem[]
   onMasterItem?: (id: string, currentValue: boolean) => void
+  onAddRecommendedWord?: (item: AddVocabPayload) => Promise<void>
   className?: string
   hidePaddingBottom?: boolean
 }) {
@@ -1480,6 +1878,7 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
   const [results, setResults] = useState<StudyResult[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const { strings } = useLocale()
+  const vocabForInsights = insightsVocabulary ?? vocabulary
 
   // Load history on first "history" tab visit
   const historyLoadedRef = useRef(false)
@@ -1488,7 +1887,12 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
       historyLoadedRef.current = true
       setLoadingHistory(true)
       dbGetStudyResults()
-        .then((data) => setResults(data))
+        .then(({ items, tableMissing }) => {
+          setResults(items)
+          if (tableMissing) {
+            toast.error("History 테이블이 없어요. Supabase SQL Editor에서 supabase/migrations/add_study_results.sql 을 실행해 주세요.")
+          }
+        })
         .finally(() => setLoadingHistory(false))
     }
     setMode("history")
@@ -1531,6 +1935,7 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
 
   const PRIMARY_MODES: ModeEntry[] = [
     { key: "quiz",      label: "단어 퀴즈",   icon: Brain,     desc: "플래시카드로 자기 테스트",       group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { key: "insights",  label: "패턴 분석",   icon: BarChart3,  desc: "단어·질문 AI 학습 인사이트", group: "create", color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
     { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점",   group: "practice", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
     { key: "translate", label: "영작 연습",   icon: Languages, desc: "한국어 → 영어 영작 후 AI 첨삭", group: "practice", color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
     { key: "upgrade",   label: strings.study.upgradeTitle, icon: ArrowRight, desc: strings.study.upgradeDesc, group: "create", color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
@@ -1577,9 +1982,9 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
           >
             <Clock className="h-3 w-3" />
             History
-            {results.filter((r) => !r.archived).length > 0 && (
+            {results.filter((r) => !r.archived && r.type !== "insights").length > 0 && (
               <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                {results.filter((r) => !r.archived).length}
+                {results.filter((r) => !r.archived && r.type !== "insights").length}
               </span>
             )}
           </button>
@@ -1588,12 +1993,20 @@ export function StudyPanel({ vocabulary, onMasterItem, className, hidePaddingBot
 
       {/* Content */}
       <div className={cn(
-        "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 sm:px-4",
+        "flex min-h-0 flex-1 flex-col px-3 sm:px-4",
+        mode === "translate" ? "overflow-hidden" : "overflow-y-auto overscroll-y-contain",
         hidePaddingBottom ? "pb-2" : "pb-4"
       )}>
         {mode === "quiz" && <QuizMode vocabulary={vocabulary} onMasterItem={onMasterItem} />}
         {mode === "challenge" && <ChallengeMode vocabulary={vocabulary} />}
         {mode === "translate" && <TranslateMode vocabulary={vocabulary} />}
+        {mode === "insights" && (
+          <InsightsMode
+            vocabulary={vocabForInsights}
+            tutorSessions={tutorSessions}
+            onAddWord={onAddRecommendedWord}
+          />
+        )}
         {mode === "upgrade" && (
           <UpgradeMode
             vocabulary={vocabulary}
