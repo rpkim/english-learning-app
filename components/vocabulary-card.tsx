@@ -325,9 +325,12 @@ export function VocabularyCard({
 
         <button
           type="button"
-          onClick={() => void handleIncrementView()}
+          onClick={(e) => {
+            e.stopPropagation()
+            void handleIncrementView()
+          }}
           disabled={!onUpdateItem || incrementingView}
-          title="복습 횟수 기록"
+          title="복습 횟수만 기록 (완료 처리와 별개)"
           className={cn(
             "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium tabular-nums transition-all",
             viewCount > 0
@@ -339,7 +342,12 @@ export function VocabularyCard({
           {incrementingView
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <Eye className="h-3.5 w-3.5" />}
-          {viewCount > 0 ? viewCount : "봤어요"}
+          <span>봤어요</span>
+          {viewCount > 0 && (
+            <span className="min-w-[1.25rem] rounded-full bg-sky-500/15 px-1.5 py-0 text-center text-[10px] font-bold leading-4">
+              {viewCount}
+            </span>
+          )}
         </button>
 
         {/* Download as Instagram image */}
