@@ -53,7 +53,7 @@ interface I18nStrings {
 
 // ── Translations ───────────────────────────────────────────────────────────
 const KO: I18nStrings = {
-  nav: { tutor: "Tutor", capture: "Capture", words: "단어장", study: "Study" },
+  nav: { tutor: "Tutor", capture: "Capture", words: "Words", study: "Study" },
   capture: { record: "Record", sessions: "Sessions" },
   tutor: {
     meaningLabel: "뜻이 뭐야?", meaningPlaceholder: "단어나 표현을 입력하세요",

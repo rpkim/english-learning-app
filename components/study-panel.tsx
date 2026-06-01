@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Mic, MicOff, Sparkles, ArrowRight, BookOpen, ChevronDown, ChevronUp,
-  Loader2, RotateCcw, Volume2, VolumeX, Check, Clock, Archive, Trash2,
+  Loader2, RotateCcw, Volume2, VolumeX, Check, Trash2,
   ChevronRight, ChevronLeft, Brain, Pencil, Trophy, Star, RefreshCw, Eye, EyeOff,
-  ThumbsUp, ThumbsDown, X as XIcon, Languages, BarChart3, Target, Lightbulb, Plus,
+  ThumbsUp, ThumbsDown, X as XIcon, Languages, BarChart3, Target, Lightbulb, Plus, PenLine,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { VocabularyItem, TutorSession } from "@/lib/types"
+import type { VocabularyItem, TutorSession, UserSentence } from "@/lib/types"
 import type { StudyInsightsResult } from "@/app/api/study-insights/route"
 import type { NextWordRec } from "@/app/api/study-insights-words/route"
 import type { AddVocabPayload } from "@/components/add-vocab-dialog"
@@ -20,8 +20,7 @@ import type { ChallengeResult, ChallengeWord } from "@/app/api/study-challenge/r
 import type { TranslateResult } from "@/app/api/study-translate/route"
 import { useTts } from "@/hooks/use-tts"
 import { useLocale } from "@/lib/locale-context"
-import type { StudyResult } from "@/lib/types"
-import { dbGetStudyResults, dbCreateStudyResult, dbUpdateStudyResult, dbDeleteStudyResult, dbGetLatestStudyInsight, dbSaveStudyInsight, type SavedInsightsContent } from "@/lib/db"
+import { dbCreateStudyResult, dbGetLatestStudyInsight, dbSaveStudyInsight, type SavedInsightsContent } from "@/lib/db"
 import { toast } from "sonner"
 
 // ── Web Speech API types ────────────────────────────────────────────────────
@@ -210,7 +209,7 @@ function UpgradeMode({
           {saved && (
             <div className="flex items-center gap-1.5 border-b border-border/40 bg-green-500/5 px-4 py-2 text-xs text-green-600 dark:text-green-400">
               <Check className="h-3 w-3" />
-              자동 저장됨 — History에서 다시 볼 수 있어요
+              결과가 저장됐어요
             </div>
           )}
           <div className="p-4 sm:p-5">
@@ -433,7 +432,7 @@ function StoryMode({
           {saved && (
             <div className="flex items-center gap-1.5 border-b border-border/40 bg-green-500/5 px-4 py-2 text-xs text-green-600 dark:text-green-400">
               <Check className="h-3 w-3" />
-              자동 저장됨 — History에서 다시 볼 수 있어요
+              결과가 저장됐어요
             </div>
           )}
           <div className="p-4 sm:p-5">
@@ -1569,7 +1568,7 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   )
 }
 
-type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "translate" | "insights" | "history"
+type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "translate" | "insights" | "my-sentences"
 
 function extractTutorQueries(sessions: TutorSession[]) {
   const out: Array<{ type: "meaning" | "translate" | "naturalize"; query: string }> = []
@@ -1949,194 +1948,123 @@ function InsightsMode({
   )
 }
 
-// ── History Item Card ────────────────────────────────────────────────────────
-function HistoryItemCard({
-  item,
-  onArchive,
-  onDelete,
-}: {
-  item: StudyResult
-  onArchive: (id: string, archived: boolean) => void
-  onDelete: (id: string) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-
-  const content = item.content
-  const isUpgrade = item.type === "upgrade"
-
-  return (
-    <div className={cn(
-      "rounded-xl border transition-all",
-      item.archived ? "border-border/30 bg-muted/20 opacity-60" : "border-border/60 bg-card"
-    )}>
-      {/* Header */}
-      <button
-        type="button"
-        onClick={() => setExpanded((p) => !p)}
-        className="flex w-full items-start gap-3 p-3 text-left"
-      >
-        <div className={cn(
-          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px]",
-          isUpgrade ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-        )}>
-          {isUpgrade ? <ArrowRight className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="truncate text-sm font-medium">{item.title}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {isUpgrade ? "표현 업그레이드" : "이야기 만들기"} · {new Date(item.created_at).toLocaleDateString()}
-          </p>
-        </div>
-        <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
-      </button>
-
-      {/* Expanded content */}
-      {expanded && (
-        <div className="border-t border-border/40 px-3 pb-3 pt-2">
-          {isUpgrade ? (
-            <div className="space-y-2">
-              {!!content.original && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-0.5">원문</p>
-                  <p className="text-sm text-muted-foreground line-through">{String(content.original)}</p>
-                </div>
-              )}
-              {!!content.improved && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-0.5">업그레이드</p>
-                  <p className="text-sm font-medium">{String(content.improved)}</p>
-                </div>
-              )}
-              {!!content.explanation && (
-                <p className="text-xs text-muted-foreground">{String(content.explanation)}</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {Array.isArray(content.paragraphs) && content.paragraphs.slice(0, 2).map((p, i) => (
-                <div key={i}>
-                  <p className="text-sm">{String((p as Record<string, unknown>).en ?? "")}</p>
-                  <p className="text-xs text-muted-foreground">{String((p as Record<string, unknown>).ko ?? "")}</p>
-                </div>
-              ))}
-              {Array.isArray(content.paragraphs) && content.paragraphs.length > 2 && (
-                <p className="text-xs text-muted-foreground/60">+{content.paragraphs.length - 2}개 문단 더…</p>
-              )}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="mt-3 flex items-center gap-3 border-t border-border/30 pt-2">
-            <button
-              type="button"
-              onClick={() => onArchive(item.id, !item.archived)}
-              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Archive className="h-3 w-3" />
-              {item.archived ? "복원" : "보관"}
-            </button>
-            <button
-              type="button"
-              onClick={() => onDelete(item.id)}
-              className="flex items-center gap-1 text-[11px] text-destructive/70 hover:text-destructive transition-colors"
-            >
-              <Trash2 className="h-3 w-3" />
-              삭제
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+// ── My Sentences Mode ────────────────────────────────────────────────────────
+interface AggregatedSentence {
+  vocabId: string
+  word: string
+  sentence: UserSentence
 }
 
-// ── History Mode ─────────────────────────────────────────────────────────────
-function HistoryMode({ results, onArchive, onDelete }: {
-  results: StudyResult[]
-  onArchive: (id: string, archived: boolean) => void
-  onDelete: (id: string) => void
+function MySentencesMode({
+  vocabulary,
+  onUpdateVocab,
+}: {
+  vocabulary: VocabularyItem[]
+  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "user_sentences">>) => void | Promise<void>
 }) {
-  const [showArchived, setShowArchived] = useState(false)
+  const { speak, speakingText } = useTts()
 
-  const historyResults = results.filter((r) => r.type !== "insights")
-  const active = historyResults.filter((r) => !r.archived)
-  const archived = historyResults.filter((r) => r.archived)
-  const displayed = showArchived ? historyResults : active
+  const entries = useMemo(() => {
+    const list: AggregatedSentence[] = []
+    for (const v of vocabulary) {
+      for (const s of v.user_sentences ?? []) {
+        list.push({ vocabId: v.id, word: v.word, sentence: s })
+      }
+    }
+    return list.sort(
+      (a, b) => new Date(b.sentence.created_at).getTime() - new Date(a.sentence.created_at).getTime(),
+    )
+  }, [vocabulary])
 
-  if (historyResults.length === 0) {
+  const handleDelete = useCallback(async (entry: AggregatedSentence) => {
+    if (!onUpdateVocab) return
+    const vocab = vocabulary.find((v) => v.id === entry.vocabId)
+    if (!vocab) return
+    const next = (vocab.user_sentences ?? []).filter((s) => s.id !== entry.sentence.id)
+    try {
+      await onUpdateVocab(entry.vocabId, { user_sentences: next })
+      toast.success("문장을 삭제했어요")
+    } catch {
+      /* toast handled upstream */
+    }
+  }, [onUpdateVocab, vocabulary])
+
+  if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-        <Clock className="h-8 w-8 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">아직 저장된 결과가 없어요</p>
-        <p className="text-xs text-muted-foreground/60">표현 업그레이드나 이야기를 만들면 자동으로 저장돼요</p>
+        <PenLine className="h-8 w-8 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">저장된 내 문장이 없어요</p>
+        <p className="max-w-[240px] text-xs text-muted-foreground/60">
+          단어장 카드에서 「내 문장」으로 나중에 쓸 표현을 저장해 두면 여기서 모아볼 수 있어요
+        </p>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Archive toggle */}
-      {archived.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{active.length}개 활성 · {archived.length}개 보관</p>
-          <button
-            type="button"
-            onClick={() => setShowArchived((p) => !p)}
-            className="text-xs text-primary hover:underline"
-          >
-            {showArchived ? "보관 숨기기" : `보관 ${archived.length}개 보기`}
-          </button>
+      <p className="text-xs text-muted-foreground">{entries.length}개 문장</p>
+      {entries.map(({ vocabId, word, sentence }) => (
+        <div
+          key={sentence.id}
+          className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5"
+        >
+          <div className="mb-1.5 flex items-start justify-between gap-2">
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+              {word}
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <TtsBtn text={sentence.text} speak={speak} speakingText={speakingText} />
+              {onUpdateVocab && (
+                <button
+                  type="button"
+                  onClick={() => void handleDelete({ vocabId, word, sentence })}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                  title="삭제"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="text-sm leading-relaxed">{sentence.text}</p>
+          <p className="mt-1.5 text-[10px] text-muted-foreground/60">
+            {new Date(sentence.created_at).toLocaleDateString("ko-KR", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })}
+          </p>
         </div>
-      )}
-
-      {displayed.map((item) => (
-        <HistoryItemCard
-          key={item.id}
-          item={item}
-          onArchive={onArchive}
-          onDelete={onDelete}
-        />
       ))}
     </div>
   )
 }
 
 // ── Main StudyPanel ─────────────────────────────────────────────────────────
-export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary, quizVocabulary, onMasterItem, onAddRecommendedWord, className, hidePaddingBottom }: {
+export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary, quizVocabulary, sentencesVocabulary, onMasterItem, onAddRecommendedWord, onUpdateVocab, className, hidePaddingBottom }: {
   vocabulary: VocabularyItem[]
   tutorSessions?: TutorSession[]
   /** Full vocab list for pattern analysis (defaults to vocabulary) */
   insightsVocabulary?: VocabularyItem[]
   /** Full vocab list for quiz collection picker (defaults to vocabulary) */
   quizVocabulary?: VocabularyItem[]
+  /** Full vocab list for my-sentences aggregation (defaults to vocabulary) */
+  sentencesVocabulary?: VocabularyItem[]
   onMasterItem?: (id: string, currentValue: boolean) => void
   onAddRecommendedWord?: (item: AddVocabPayload) => Promise<void>
+  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "user_sentences">>) => void | Promise<void>
   className?: string
   hidePaddingBottom?: boolean
 }) {
   const [mode, setMode] = useState<PanelMode>("upgrade")
-  const [results, setResults] = useState<StudyResult[]>([])
-  const [loadingHistory, setLoadingHistory] = useState(false)
   const { strings } = useLocale()
   const vocabForInsights = insightsVocabulary ?? vocabulary
-
-  // Load history on first "history" tab visit
-  const historyLoadedRef = useRef(false)
-  const goHistory = () => {
-    if (!historyLoadedRef.current) {
-      historyLoadedRef.current = true
-      setLoadingHistory(true)
-      dbGetStudyResults()
-        .then(({ items, tableMissing }) => {
-          setResults(items)
-          if (tableMissing) {
-            toast.error("History 테이블이 없어요. Supabase SQL Editor에서 supabase/migrations/add_study_results.sql 을 실행해 주세요.")
-          }
-        })
-        .finally(() => setLoadingHistory(false))
-    }
-    setMode("history")
-  }
+  const vocabForSentences = sentencesVocabulary ?? vocabulary
+  const sentenceCount = useMemo(
+    () => vocabForSentences.reduce((n, v) => n + (v.user_sentences?.length ?? 0), 0),
+    [vocabForSentences],
+  )
 
   const handleSaveResult = useCallback(async (
     type: "upgrade" | "story",
@@ -2144,21 +2072,10 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
     content: Record<string, unknown>
   ) => {
     try {
-      const saved = await dbCreateStudyResult(type, title, content)
-      setResults((prev) => [saved, ...prev])
+      await dbCreateStudyResult(type, title, content)
     } catch (e) {
       console.error("[StudyPanel] save failed:", e)
     }
-  }, [])
-
-  const handleArchive = useCallback(async (id: string, archived: boolean) => {
-    setResults((prev) => prev.map((r) => r.id === id ? { ...r, archived } : r))
-    await dbUpdateStudyResult(id, { archived }).catch(console.error)
-  }, [])
-
-  const handleDelete = useCallback(async (id: string) => {
-    setResults((prev) => prev.filter((r) => r.id !== id))
-    await dbDeleteStudyResult(id).catch(console.error)
   }, [])
 
   // top two rows: primary modes (full-width cards), bottom row: icon-only shortcuts
@@ -2208,23 +2125,23 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
           ))}
         </div>
 
-        {/* History pill */}
+        {/* My sentences pill */}
         <div className="mt-2 flex justify-end">
           <button
             type="button"
-            onClick={() => goHistory()}
+            onClick={() => setMode("my-sentences")}
             className={cn(
               "relative flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-all",
-              mode === "history"
-                ? "border-primary/40 bg-primary/5 text-foreground"
-                : "border-border/50 bg-muted/20 text-muted-foreground hover:text-foreground"
+              mode === "my-sentences"
+                ? "border-amber-500/40 bg-amber-500/10 text-foreground"
+                : "border-border/50 bg-muted/20 text-muted-foreground hover:text-foreground",
             )}
           >
-            <Clock className="h-3 w-3" />
-            History
-            {results.filter((r) => !r.archived && r.type !== "insights").length > 0 && (
-              <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                {results.filter((r) => !r.archived && r.type !== "insights").length}
+            <PenLine className="h-3 w-3" />
+            내 문장
+            {sentenceCount > 0 && (
+              <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
+                {sentenceCount}
               </span>
             )}
           </button>
@@ -2265,10 +2182,8 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
             onSave={(title, content) => void handleSaveResult("story", title, content)}
           />
         )}
-        {mode === "history" && (
-          loadingHistory
-            ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-            : <HistoryMode results={results} onArchive={handleArchive} onDelete={handleDelete} />
+        {mode === "my-sentences" && (
+          <MySentencesMode vocabulary={vocabForSentences} onUpdateVocab={onUpdateVocab} />
         )}
       </div>
     </div>

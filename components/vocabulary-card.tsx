@@ -1,12 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { VocabularyItem } from "@/lib/types"
-import { CheckCircle2, Circle, Trash2, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe, ImageDown, Eye } from "lucide-react"
+import { VocabularyItem, type UserSentence } from "@/lib/types"
+import { CheckCircle2, Circle, Volume2, VolumeX, Sparkles, GitBranch, Loader2, Globe, ImageDown, Eye, EyeOff, PenLine } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTts } from "@/hooks/use-tts"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { downloadVocabImage } from "@/lib/vocab-image"
+import { toast } from "sonner"
+import type { ChallengeResult } from "@/app/api/study-challenge/route"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 export const TYPE_COLORS: Record<string, string> = {
@@ -63,10 +66,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ── Props ──────────────────────────────────────────────────────────────────
 export interface VocabularyCardProps {
   item: VocabularyItem
-  onDelete: (id: string) => void
   onToggleMastered: (id: string, current: boolean) => void
   onTranslate: (item: VocabularyItem) => void
-  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>) => void | Promise<void>
+  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count" | "user_sentences">>) => void | Promise<void>
   isTranslating: boolean
   /** Compact = list view. Full = deck view (no border, renders inline). */
   variant?: "list" | "full"
@@ -74,7 +76,6 @@ export interface VocabularyCardProps {
 
 export function VocabularyCard({
   item,
-  onDelete,
   onToggleMastered,
   onTranslate,
   onUpdateItem,
@@ -92,17 +93,31 @@ export function VocabularyCard({
   const [aiError, setAiError] = useState<string | null>(null)
   const [viewCount, setViewCount] = useState(item.view_count ?? 0)
   const [incrementingView, setIncrementingView] = useState(false)
+  const [userSentences, setUserSentences] = useState<UserSentence[]>(item.user_sentences ?? [])
+  const [showAddSentence, setShowAddSentence] = useState(false)
+  const [sentenceDraft, setSentenceDraft] = useState("")
+  const [savingSentence, setSavingSentence] = useState(false)
+  const [reviewingSentence, setReviewingSentence] = useState(false)
+  const [sentenceReview, setSentenceReview] = useState<ChallengeResult | null>(null)
+  const [showBetterReview, setShowBetterReview] = useState(false)
 
   useEffect(() => {
     setExtraExamples(item.extra_examples?.length ? item.extra_examples : null)
     setEtymology(item.etymology ?? null)
     setRelatedForms(item.related_forms ?? null)
     setViewCount(item.view_count ?? 0)
+    setUserSentences(item.user_sentences ?? [])
+    setShowAddSentence(false)
+    setSentenceDraft("")
+    setSentenceReview(null)
+    setShowBetterReview(false)
+    setReviewingSentence(false)
     setAiError(null)
     setLoadingExamples(false)
     setLoadingEtymology(false)
     setIncrementingView(false)
-  }, [item.id, item.extra_examples, item.etymology, item.related_forms, item.view_count])
+    setSavingSentence(false)
+  }, [item.id, item.extra_examples, item.etymology, item.related_forms, item.view_count, item.user_sentences])
 
   const koreanText = getKoreanTranslationText(item.korean_translation)
 
@@ -162,6 +177,63 @@ export function VocabularyCard({
       setViewCount(prev)
     } finally {
       setIncrementingView(false)
+    }
+  }
+
+  const handleReviewSentence = async () => {
+    const text = sentenceDraft.trim()
+    if (!text || reviewingSentence) return
+    setReviewingSentence(true)
+    setSentenceReview(null)
+    setShowBetterReview(false)
+    try {
+      const res = await fetch("/api/study-challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sentence: text,
+          words: [{
+            word: item.word,
+            type: item.type,
+            definition: item.definition,
+            korean_translation: koreanText || null,
+          }],
+          targetLang: "ko",
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(typeof data?.error === "string" ? data.error : "AI 검토에 실패했어요")
+        return
+      }
+      setSentenceReview(data as ChallengeResult)
+    } catch {
+      toast.error("네트워크 오류")
+    } finally {
+      setReviewingSentence(false)
+    }
+  }
+
+  const handleSaveSentence = async () => {
+    const text = sentenceDraft.trim()
+    if (!text || !onUpdateItem || savingSentence) return
+    const entry: UserSentence = {
+      id: crypto.randomUUID(),
+      text,
+      created_at: new Date().toISOString(),
+    }
+    const next = [entry, ...userSentences]
+    setSavingSentence(true)
+    try {
+      await onUpdateItem(item.id, { user_sentences: next })
+      setUserSentences(next)
+      setSentenceDraft("")
+      setShowAddSentence(false)
+      toast.success("내 문장을 저장했어요")
+    } catch {
+      toast.error("문장 저장에 실패했어요")
+    } finally {
+      setSavingSentence(false)
     }
   }
 
@@ -305,22 +377,163 @@ export function VocabularyCard({
         </div>
       )}
 
-      {/* Actions footer */}
-      <div className={cn("flex items-center gap-2 border-t border-border/40 pt-3", variant === "full" ? "mt-4" : "mt-3")}>
+      {userSentences.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          <SectionLabel>내 문장</SectionLabel>
+          {userSentences.map((s) => (
+            <div key={s.id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+              <p className="text-sm leading-relaxed">{s.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAddSentence && (
+        <div className="mt-3 space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+          <Textarea
+            value={sentenceDraft}
+            onChange={(e) => {
+              setSentenceDraft(e.target.value)
+              setSentenceReview(null)
+              setShowBetterReview(false)
+            }}
+            placeholder="나중에 쓸 영어 문장을 적어 보세요…"
+            className="min-h-[72px] resize-none text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                void handleSaveSentence()
+              }
+            }}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 text-xs"
+              disabled={!sentenceDraft.trim() || reviewingSentence}
+              onClick={() => void handleReviewSentence()}
+            >
+              {reviewingSentence
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Sparkles className="h-3 w-3" />}
+              AI 검토
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={!sentenceDraft.trim() || savingSentence}
+              onClick={() => void handleSaveSentence()}
+            >
+              {savingSentence ? <Loader2 className="h-3 w-3 animate-spin" /> : "저장"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 text-xs"
+              onClick={() => {
+                setShowAddSentence(false)
+                setSentenceDraft("")
+                setSentenceReview(null)
+                setShowBetterReview(false)
+              }}
+            >
+              취소
+            </Button>
+          </div>
+
+          {sentenceReview && (
+            <div className="space-y-2 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+              <div className="flex items-start gap-3">
+                <div className={cn(
+                  "flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl text-xs font-bold",
+                  sentenceReview.score >= 8
+                    ? "bg-green-500/15 text-green-600 dark:text-green-400"
+                    : sentenceReview.score >= 5
+                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      : "bg-muted text-muted-foreground",
+                )}>
+                  <span className="text-base leading-none">{sentenceReview.score}</span>
+                  <span className="text-[9px] opacity-70">/10</span>
+                </div>
+                <p className="flex-1 text-sm leading-relaxed">{sentenceReview.praise}</p>
+              </div>
+
+              {sentenceReview.tip && (
+                <p className="rounded-lg border border-violet-500/15 bg-background/60 px-2.5 py-2 text-xs leading-relaxed text-foreground/80">
+                  💡 {sentenceReview.tip}
+                </p>
+              )}
+
+              {sentenceReview.corrections.length > 0 && (
+                <div className="space-y-1.5">
+                  {sentenceReview.corrections.map((c, i) => (
+                    <div key={i} className="rounded-lg border border-border/50 bg-background/60 px-2.5 py-2">
+                      <div className="flex flex-wrap items-center gap-1 text-xs">
+                        <span className="text-destructive line-through">{c.original}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-medium">{c.suggestion}</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">{c.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {sentenceReview.better_version && (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowBetterReview((p) => !p)}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                  >
+                    {showBetterReview ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    모범 답안 {showBetterReview ? "숨기기" : "보기"}
+                  </button>
+                  {showBetterReview && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2">
+                      <p className="text-sm italic leading-relaxed">{sentenceReview.better_version}</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-7 text-[11px]"
+                        onClick={() => {
+                          setSentenceDraft(sentenceReview.better_version)
+                          setSentenceReview(null)
+                          setShowBetterReview(false)
+                        }}
+                      >
+                        문장에 적용
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions footer — wrap on narrow screens */}
+      <div className={cn("flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3", variant === "full" ? "mt-4" : "mt-3")}>
         <button
           type="button"
           onClick={() => onToggleMastered(item.id, item.is_mastered)}
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition-all",
+            "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition-all",
             item.is_mastered
               ? "border-green-400/40 bg-green-500/10 text-green-600 dark:text-green-400"
               : "border-border/60 bg-muted/40 text-muted-foreground hover:border-green-400/40 hover:bg-green-500/10 hover:text-green-600"
           )}
         >
           {item.is_mastered
-            ? <CheckCircle2 className="h-3.5 w-3.5" />
-            : <Circle className="h-3.5 w-3.5" />}
-          {item.is_mastered ? "학습 완료" : "완료 표시"}
+            ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            : <Circle className="h-3.5 w-3.5 shrink-0" />}
+          <span className="whitespace-nowrap">{item.is_mastered ? "학습 완료" : "완료"}</span>
         </button>
 
         <button
@@ -330,9 +543,9 @@ export function VocabularyCard({
             void handleIncrementView()
           }}
           disabled={!onUpdateItem || incrementingView}
-          title="복습 횟수만 기록 (완료 처리와 별개)"
+          title="복습 횟수 (완료와 별개)"
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium tabular-nums transition-all",
+            "relative flex shrink-0 items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] font-medium tabular-nums transition-all",
             viewCount > 0
               ? "border-sky-400/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
               : "border-border/60 bg-muted/40 text-muted-foreground hover:border-sky-400/40 hover:bg-sky-500/10 hover:text-sky-600",
@@ -341,33 +554,37 @@ export function VocabularyCard({
         >
           {incrementingView
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : <Eye className="h-3.5 w-3.5" />}
-          <span>봤어요</span>
+            : <Eye className="h-3.5 w-3.5 shrink-0" />}
+          <span className="whitespace-nowrap">봤어요</span>
           {viewCount > 0 && (
-            <span className="min-w-[1.25rem] rounded-full bg-sky-500/15 px-1.5 py-0 text-center text-[10px] font-bold leading-4">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold leading-none text-white">
               {viewCount}
             </span>
           )}
         </button>
 
-        {/* Download as Instagram image */}
         <button
           type="button"
-          onClick={() => downloadVocabImage(item)}
-          title="Instagram 이미지로 저장 (1080×1350)"
-          className="flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+          onClick={() => setShowAddSentence((p) => !p)}
+          className={cn(
+            "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition-all",
+            showAddSentence
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              : "border-border/60 bg-muted/40 text-muted-foreground hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-700",
+          )}
         >
-          <ImageDown className="h-3 w-3" />
-          이미지
+          <PenLine className="h-3 w-3 shrink-0" />
+          <span className="whitespace-nowrap">내 문장</span>
         </button>
 
         <button
           type="button"
-          onClick={() => onDelete(item.id)}
-          className="ml-auto flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => downloadVocabImage(item)}
+          title="Instagram 이미지로 저장 (1080×1350)"
+          className="flex shrink-0 items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
         >
-          <Trash2 className="h-3 w-3" />
-          삭제
+          <ImageDown className="h-3 w-3 shrink-0" />
+          <span className="whitespace-nowrap">이미지</span>
         </button>
       </div>
     </div>
