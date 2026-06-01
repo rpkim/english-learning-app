@@ -557,6 +557,7 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
   const [easy, setEasy] = useState(0)
   const [hard, setHard] = useState(0)
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null)
+  const [quizViewedOnly, setQuizViewedOnly] = useState(false)
   const { speak, speakingText } = useTts()
 
   const sourceVocab = quizVocabulary ?? vocabulary
@@ -576,8 +577,17 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
     [sourceVocab, filterByCollection],
   )
 
-  const quizPool = useMemo(
-    () => filterByCollection(sourceVocab.filter((v) => !v.is_mastered)),
+  const quizPool = useMemo(() => {
+    let pool = filterByCollection(sourceVocab.filter((v) => !v.is_mastered))
+    if (quizViewedOnly) {
+      pool = pool.filter((v) => (v.view_count ?? 0) > 0)
+    }
+    return pool
+  }, [sourceVocab, filterByCollection, quizViewedOnly])
+
+  const viewedQuizCount = useMemo(
+    () =>
+      filterByCollection(sourceVocab.filter((v) => !v.is_mastered && (v.view_count ?? 0) > 0)).length,
     [sourceVocab, filterByCollection],
   )
 
@@ -626,6 +636,10 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
     } else {
       setHard((n) => n + 1)
     }
+    goNextCard()
+  }
+
+  const goNextCard = () => {
     if (idx + 1 >= cards.length) setState("done")
     else {
       setIdx((n) => n + 1)
@@ -654,8 +668,14 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
         <Brain className="h-8 w-8 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">학습할 단어가 없어요</p>
-        <p className="text-xs text-muted-foreground/60">단어장에 단어를 추가해 보세요</p>
+        <p className="text-sm text-muted-foreground">
+          {quizViewedOnly ? "봤어요한 단어가 없어요" : "학습할 단어가 없어요"}
+        </p>
+        <p className="text-xs text-muted-foreground/60">
+          {quizViewedOnly
+            ? "단어장 카드에서 「봤어요」를 눌러 본 단어를 표시해 보세요"
+            : "단어장에 단어를 추가해 보세요"}
+        </p>
       </div>
     )
   }
@@ -676,6 +696,24 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
           selectedCollection={selectedCollection}
           onSelect={setSelectedCollection}
         />
+
+        <button
+          type="button"
+          onClick={() => setQuizViewedOnly((p) => !p)}
+          disabled={viewedQuizCount === 0}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            quizViewedOnly
+              ? "border-sky-400/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+              : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Eye className="h-3 w-3" />
+          봤어요한 단어만
+          {viewedQuizCount > 0 && (
+            <span className="tabular-nums opacity-80">{viewedQuizCount}</span>
+          )}
+        </button>
 
         <div className="flex w-full max-w-sm flex-col gap-2">
           <button
@@ -703,7 +741,9 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
               단어 퀴즈
             </div>
             <p className="text-xs text-muted-foreground">
-              뜻 숨김 · {Math.min(quizPool.length, 20)}개 플래시카드 테스트
+              {quizViewedOnly
+                ? `봤어요 ${Math.min(quizPool.length, 20)}개 · 뜻 숨김 플래시카드`
+                : `뜻 숨김 · ${Math.min(quizPool.length, 20)}개 플래시카드 테스트`}
             </p>
           </button>
         </div>
@@ -912,14 +952,22 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
           </div>
 
           {!revealed ? (
-            <div className="border-t border-border/40 bg-muted/20 px-4 py-3 flex justify-center">
+            <div className="border-t border-border/40 bg-muted/20 px-4 py-3 flex gap-2">
               <button
                 type="button"
                 onClick={() => setRevealed(true)}
-                className="flex items-center gap-2 rounded-full border border-border/60 bg-card px-5 py-2 text-sm font-medium hover:bg-muted transition"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm font-medium hover:bg-muted transition"
               >
                 <Eye className="h-4 w-4" />
                 뜻 확인
+              </button>
+              <button
+                type="button"
+                onClick={goNextCard}
+                className="flex shrink-0 items-center justify-center gap-1 rounded-xl border border-border/60 bg-muted/40 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition"
+              >
+                <ChevronRight className="h-4 w-4" />
+                다음
               </button>
             </div>
           ) : (
@@ -953,18 +1001,26 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
                 <button
                   type="button"
                   onClick={() => grade("hard")}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/5 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition"
                 >
-                  <ThumbsDown className="h-4 w-4" />
-                  어려워요
+                  <ThumbsDown className="h-4 w-4 shrink-0" />
+                  <span className="truncate">어려워요</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={goNextCard}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/60 bg-muted/40 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition"
+                >
+                  <ChevronRight className="h-4 w-4 shrink-0" />
+                  <span className="truncate">다음</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => grade("easy")}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-green-500/30 bg-green-500/5 py-3 text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-500/10 transition"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/5 py-3 text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-500/10 transition"
                 >
-                  <ThumbsUp className="h-4 w-4" />
-                  알아요!
+                  <ThumbsUp className="h-4 w-4 shrink-0" />
+                  <span className="truncate">알아요!</span>
                 </button>
               </div>
             </div>

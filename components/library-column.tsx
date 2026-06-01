@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import { Conversation, ConversationGroup, VocabularyItem, TutorSession } from "@/lib/types"
-import { VocabularyCard } from "@/components/vocabulary-card"
+import { VocabularyCard, getKoreanTranslationText } from "@/components/vocabulary-card"
 import { VocabularyDeck } from "@/components/vocabulary-deck"
 import { ConversationHistory } from "@/components/conversation-history"
 import { TutorChatPanel } from "@/components/tutor-chat-panel"
 import { StudyPanel } from "@/components/study-panel"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -23,6 +24,7 @@ import {
   LayoutList,
   GalleryHorizontal,
   Sparkles,
+  Search,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -87,6 +89,23 @@ export interface LibraryColumnProps {
   setVocabSourceFilter: (f: "all" | "session" | "tutor" | "manual") => void
   tutorVocabCount: number
   onOrganizeVocabulary?: () => Promise<void>
+}
+
+function matchesVocabSearch(item: VocabularyItem, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const haystack = [
+    item.word,
+    item.definition,
+    item.example_sentence,
+    item.context,
+    item.collection,
+    getKoreanTranslationText(item.korean_translation),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+  return haystack.includes(q)
 }
 
 export function LibraryColumn({
@@ -154,6 +173,7 @@ export function LibraryColumn({
   const [hideMastered, setHideMastered] = useState(true)
   const [isOrganizing, setIsOrganizing] = useState(false)
   const [collectionFilter, setCollectionFilter] = useState<string | null>(null)
+  const [vocabSearchQuery, setVocabSearchQuery] = useState("")
 
   const scopeLabel =
     vocabSourceFilter === "tutor"
@@ -255,6 +275,27 @@ export function LibraryColumn({
             {masteredCount}/{scopedVocabulary.length}
             <span className="hidden sm:inline"> mastered</span>
           </span>
+        )}
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50" />
+        <Input
+          value={vocabSearchQuery}
+          onChange={(e) => setVocabSearchQuery(e.target.value)}
+          placeholder={strings.words.searchPlaceholder}
+          className="h-8 border-border/60 bg-muted/20 pl-8 pr-8 text-sm"
+        />
+        {vocabSearchQuery.trim() && (
+          <button
+            type="button"
+            onClick={() => setVocabSearchQuery("")}
+            className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+            title="검색 지우기"
+          >
+            <X className="h-3 w-3" />
+          </button>
         )}
       </div>
 
@@ -457,8 +498,12 @@ export function LibraryColumn({
   const displayedVocabulary = (() => {
     let list = hideMastered ? filteredVocabulary.filter((v) => !v.is_mastered) : filteredVocabulary
     if (collectionFilter) list = list.filter((v) => v.collection === collectionFilter)
+    const q = vocabSearchQuery.trim()
+    if (q) list = list.filter((v) => matchesVocabSearch(v, q))
     return list
   })()
+
+  const hasActiveSearch = vocabSearchQuery.trim().length > 0
 
   const vocabBody = (
     <div className="min-h-0 flex-1 overflow-hidden">
@@ -470,11 +515,13 @@ export function LibraryColumn({
         <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
           <BookOpen className="h-8 w-8 opacity-20" />
           <p className="max-w-[22ch] text-sm leading-relaxed text-balance">
-            {hideMastered && filteredVocabulary.length > 0
-              ? strings.words.masteredOnly
-              : vocabSourceFilter === "tutor"
-                ? strings.words.emptyTutor
-                : strings.words.empty}
+            {hasActiveSearch
+              ? strings.words.searchEmpty
+              : hideMastered && filteredVocabulary.length > 0
+                ? strings.words.masteredOnly
+                : vocabSourceFilter === "tutor"
+                  ? strings.words.emptyTutor
+                  : strings.words.empty}
           </p>
         </div>
       ) : vocabDisplayView === "deck" ? (
