@@ -593,7 +593,7 @@ export function EnglishLearningApp() {
 
   const handleUpdateVocabItem = useCallback(async (
     id: string,
-    fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>,
+    fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count" | "user_sentences">>,
   ) => {
     try {
       const updated = await dbUpdateVocabularyItem(id, fields)
@@ -1784,9 +1784,11 @@ export function EnglishLearningApp() {
               <StudyPanel
                 vocabulary={vocabulary}
                 quizVocabulary={vocabulary}
+                sentencesVocabulary={vocabulary}
                 tutorSessions={tutorSessions}
                 onMasterItem={handleToggleMastered}
                 onAddRecommendedWord={(item) => handleAddVocabItems([item])}
+                onUpdateVocab={handleUpdateVocabItem}
                 hidePaddingBottom
               />
             </div>
@@ -1926,9 +1928,11 @@ export function EnglishLearningApp() {
               <StudyPanel
                 vocabulary={vocabulary}
                 quizVocabulary={vocabulary}
+                sentencesVocabulary={vocabulary}
                 tutorSessions={tutorSessions}
                 onMasterItem={handleToggleMastered}
                 onAddRecommendedWord={(item) => handleAddVocabItems([item])}
+                onUpdateVocab={handleUpdateVocabItem}
                 className="min-h-0 flex-1"
               />
             </div>

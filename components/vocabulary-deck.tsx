@@ -8,17 +8,15 @@ import { VocabularyCard } from "@/components/vocabulary-card"
 
 interface VocabularyDeckProps {
   items: VocabularyItem[]
-  onDelete: (id: string) => void
   onToggleMastered: (id: string, current: boolean) => void
   onTranslate: (item: VocabularyItem) => void
-  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>) => void | Promise<void>
+  onUpdateItem?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count" | "user_sentences">>) => void | Promise<void>
   translatingId: string | null
   className?: string
 }
 
 export function VocabularyDeck({
   items,
-  onDelete,
   onToggleMastered,
   onTranslate,
   onUpdateItem,
@@ -136,11 +134,6 @@ export function VocabularyDeck({
           <VocabularyCard
             key={item.id}
             item={item}
-            onDelete={(id) => {
-              onDelete(id)
-              // go to previous if deleting last card
-              if (index >= items.length - 1 && index > 0) setIndex(index - 1)
-            }}
             onToggleMastered={onToggleMastered}
             onTranslate={onTranslate}
             onUpdateItem={onUpdateItem}

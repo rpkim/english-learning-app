@@ -23,6 +23,13 @@ export interface VocabularyItem {
   extra_examples?: string[]
   etymology?: string | null
   related_forms?: string | null
+  user_sentences?: UserSentence[]
+  created_at: string
+}
+
+export interface UserSentence {
+  id: string
+  text: string
   created_at: string
 }
 

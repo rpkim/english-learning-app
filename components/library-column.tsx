@@ -74,7 +74,7 @@ export interface LibraryColumnProps {
   onAddVocabItems?: (items: AddVocabPayload[]) => Promise<void>
   onDeleteVocab: (id: string) => void | Promise<void>
   onToggleMastered: (id: string, current: boolean) => void | Promise<void>
-  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count">>) => void | Promise<void>
+  onUpdateVocab?: (id: string, fields: Partial<Pick<VocabularyItem, "extra_examples" | "etymology" | "related_forms" | "view_count" | "user_sentences">>) => void | Promise<void>
   onTranslate: (item: VocabularyItem) => void | Promise<void>
   translatingId: string | null
   onAddFrequentWord: (word: string) => void | Promise<void>
@@ -480,7 +480,6 @@ export function LibraryColumn({
       ) : vocabDisplayView === "deck" ? (
         <VocabularyDeck
           items={displayedVocabulary}
-          onDelete={onDeleteVocab}
           onToggleMastered={onToggleMastered}
           onTranslate={onTranslate}
           onUpdateItem={onUpdateVocab}
@@ -494,7 +493,6 @@ export function LibraryColumn({
               <VocabularyCard
                 key={item.id}
                 item={item}
-                onDelete={onDeleteVocab}
                 onToggleMastered={onToggleMastered}
                 onTranslate={onTranslate}
                 onUpdateItem={onUpdateVocab}
@@ -563,8 +561,10 @@ export function LibraryColumn({
             vocabulary={filteredVocabulary}
             insightsVocabulary={allVocabulary}
             quizVocabulary={allVocabulary}
+            sentencesVocabulary={allVocabulary}
             tutorSessions={tutorSessions}
             onAddRecommendedWord={onAddVocabItems ? (item) => onAddVocabItems([item]) : undefined}
+            onUpdateVocab={onUpdateVocab}
             className="min-h-0 flex-1"
           />
         </TabsContent>
