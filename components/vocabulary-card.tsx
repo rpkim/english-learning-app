@@ -19,6 +19,7 @@ export const TYPE_COLORS: Record<string, string> = {
   phrasal_verb:"bg-primary/10 text-primary border-primary/20",
   expression:  "bg-amber-500/10 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-600/40",
   rephrase:    "bg-teal-500/10 text-teal-700 border-teal-300 dark:text-teal-400 dark:border-teal-600/40",
+  translate:   "bg-blue-500/10 text-blue-700 border-blue-300 dark:text-blue-400 dark:border-blue-600/40",
 }
 
 export const TYPE_LABELS: Record<string, string> = {
@@ -28,6 +29,7 @@ export const TYPE_LABELS: Record<string, string> = {
   phrasal_verb: "Word",
   expression: "Expression",
   rephrase: "Rephrase",
+  translate: "Translate",
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -88,6 +90,24 @@ function rephraseHeadline(item: VocabularyItem): string {
   const improved = item.definition?.trim()
   if (!improved) return "표현 교정"
   return improved.length > 72 ? `${improved.slice(0, 72)}…` : improved
+}
+
+function isTranslateEntry(item: VocabularyItem): boolean {
+  if (item.type === "translate") return true
+  return (
+    item.type === "expression" &&
+    item.source === "tutor" &&
+    !item.example_sentence?.trim() &&
+    Boolean(getKoreanTranslationText(item.korean_translation))
+  )
+}
+
+function translateHeadline(item: VocabularyItem): string {
+  const translation = getKoreanTranslationText(item.korean_translation)
+  if (translation) {
+    return translation.length > 72 ? `${translation.slice(0, 72)}…` : translation
+  }
+  return item.word.length > 72 ? `${item.word.slice(0, 72)}…` : item.word
 }
 
 // ── Section label ──────────────────────────────────────────────────────────
@@ -157,8 +177,10 @@ export function VocabularyCard({
 
   const koreanText = getKoreanTranslationText(item.korean_translation)
   const isRephrase = item.type === "rephrase"
+  const isTranslate = isTranslateEntry(item)
   const rephraseAlts = isRephrase ? parseRephraseAlternatives(item) : []
   const rephraseExplanation = isRephrase ? parseRephraseExplanation(item) : ""
+  const translateText = isTranslate ? getKoreanTranslationText(item.korean_translation) : ""
 
   const runDeepDive = async (mode: "examples" | "etymology") => {
     setAiError(null)
@@ -281,10 +303,14 @@ export function VocabularyCard({
       {/* Word + badges */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h3 className={cn("font-bold tracking-tight", variant === "full" ? "text-2xl" : "text-lg")}>
-          {isRephrase ? rephraseHeadline(item) : item.word}
+          {isRephrase
+            ? rephraseHeadline(item)
+            : isTranslate
+              ? translateHeadline(item)
+              : item.word}
         </h3>
-        <span className={cn("rounded-full border px-2 py-0 text-[10px] font-medium leading-5", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}>
-          {TYPE_LABELS[item.type] ?? item.type}
+        <span className={cn("rounded-full border px-2 py-0 text-[10px] font-medium leading-5", TYPE_COLORS[isTranslate ? "translate" : item.type] ?? TYPE_COLORS.word)}>
+          {TYPE_LABELS[isTranslate ? "translate" : item.type] ?? item.type}
         </span>
         {item.source && item.source !== "manual" && (
           <span className={cn("rounded-full px-2 py-0 text-[10px] font-medium leading-5", SOURCE_COLORS[item.source] ?? "")}>
@@ -298,10 +324,20 @@ export function VocabularyCard({
         )}
         <button
           type="button"
-          onClick={() => speak(isRephrase && item.definition ? item.definition : item.word)}
+          onClick={() => {
+            if (isRephrase && item.definition) speak(item.definition)
+            else if (isTranslate && translateText) speak(translateText)
+            else speak(item.word)
+          }}
           className="ml-auto text-muted-foreground/50 hover:text-foreground transition-colors"
         >
-          {speakingText === (isRephrase && item.definition ? item.definition : item.word)
+          {speakingText === (
+            isRephrase && item.definition
+              ? item.definition
+              : isTranslate && translateText
+                ? translateText
+                : item.word
+          )
             ? <VolumeX className="h-4 w-4 animate-pulse text-primary" />
             : <Volume2 className="h-4 w-4" />}
         </button>
@@ -374,6 +410,47 @@ export function VocabularyCard({
               <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
                 {rephraseExplanation}
               </p>
+            </div>
+          )}
+        </>
+      ) : isTranslate ? (
+        <>
+          <div className="mb-3">
+            <SectionLabel>원문</SectionLabel>
+            <div className="flex items-start gap-2">
+              <p className="flex-1 text-sm leading-relaxed text-foreground/70 italic">&ldquo;{item.word}&rdquo;</p>
+              <button
+                type="button"
+                onClick={() => speak(item.word)}
+                className="shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
+              >
+                {speakingText === item.word
+                  ? <VolumeX className="h-3.5 w-3.5 animate-pulse text-primary" />
+                  : <Volume2 className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {translateText && (
+            <div className="mb-3">
+              <SectionLabel>번역</SectionLabel>
+              <p className="text-[15px] font-semibold leading-relaxed">{translateText}</p>
+            </div>
+          )}
+
+          {item.definition?.trim() && (
+            <div className="mb-3">
+              <SectionLabel>직역</SectionLabel>
+              <p className="text-sm leading-relaxed text-foreground/70">{item.definition}</p>
+            </div>
+          )}
+
+          {item.context?.trim() && (
+            <div className="mb-3">
+              <SectionLabel>참고</SectionLabel>
+              <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2.5">
+                <p className="text-xs leading-relaxed text-blue-700 dark:text-blue-400">📌 {item.context}</p>
+              </div>
             </div>
           )}
         </>

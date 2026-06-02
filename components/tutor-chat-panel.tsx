@@ -305,7 +305,13 @@ function makePayload(result: LookupResult): AddVocabPayload {
     }
   } else if (result.type === "translate") {
     const r = result as import("@/app/api/tutor-lookup/route").TranslateResult
-    return { word: r.query, type: "expression", korean_translation: r.translation, definition: r.literal ?? undefined, context: r.note ?? undefined }
+    return {
+      word: r.query,
+      type: "translate",
+      korean_translation: r.translation,
+      definition: r.literal ?? undefined,
+      context: r.note ?? undefined,
+    }
   } else {
     const r = result as import("@/app/api/tutor-lookup/route").NaturalizeResult
     const altBullets = r.alternatives
