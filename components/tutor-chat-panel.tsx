@@ -305,14 +305,25 @@ function makePayload(result: LookupResult): AddVocabPayload {
     }
   } else if (result.type === "translate") {
     const r = result as import("@/app/api/tutor-lookup/route").TranslateResult
-    return { word: r.query, type: "expression", korean_translation: r.translation, definition: r.literal ?? undefined, context: r.note ?? undefined }
+    return {
+      word: r.query,
+      type: "translate",
+      korean_translation: r.translation,
+      definition: r.literal ?? undefined,
+      context: r.note ?? undefined,
+    }
   } else {
     const r = result as import("@/app/api/tutor-lookup/route").NaturalizeResult
+    const altBullets = r.alternatives
+      .map((a) => `• ${a.text}${a.note ? ` — ${a.note}` : ""}`)
+      .join("\n")
     return {
-      word: r.query, type: "rephrase",
+      word: r.query,
+      type: "rephrase",
       definition: r.improved,
-      example_sentence: r.alternatives[0]?.text,
-      context: [r.changes, r.alternatives.slice(1).map((a) => `• ${a.text} — ${a.note}`).join("\n")].filter(Boolean).join("\n\n"),
+      korean_translation: r.changes,
+      example_sentence: r.alternatives[0]?.text ?? undefined,
+      context: altBullets || undefined,
     }
   }
 }

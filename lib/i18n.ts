@@ -31,6 +31,8 @@ interface I18nStrings {
     collection: string; collectionAll: string
     deck: string; list: string
     pdfDownload: string
+    searchPlaceholder: string
+    searchEmpty: string
   }
   study: {
     upgradeTitle: string; upgradeDesc: string
@@ -75,6 +77,8 @@ const KO: I18nStrings = {
     collection: "단어장", collectionAll: "전체",
     deck: "카드 보기", list: "리스트 보기",
     pdfDownload: "PDF 다운로드",
+    searchPlaceholder: "단어, 뜻, 예문 검색…",
+    searchEmpty: "검색 결과가 없어요",
   },
   study: {
     upgradeTitle: "표현 업그레이드", upgradeDesc: "내 문장을 더 자연스럽게",
@@ -119,6 +123,8 @@ const EN: I18nStrings = {
     collection: "Collections", collectionAll: "All",
     deck: "Card view", list: "List view",
     pdfDownload: "PDF Download",
+    searchPlaceholder: "Search word, meaning, example…",
+    searchEmpty: "No matching words",
   },
   study: {
     upgradeTitle: "Upgrade Expression", upgradeDesc: "Make your sentences more natural",
@@ -163,6 +169,8 @@ const JA: I18nStrings = {
     collection: "コレクション", collectionAll: "全て",
     deck: "カード表示", list: "リスト表示",
     pdfDownload: "PDFダウンロード",
+    searchPlaceholder: "単語・意味・例文を検索…",
+    searchEmpty: "該当する単語がありません",
   },
   study: {
     upgradeTitle: "表現アップグレード", upgradeDesc: "文をより自然に",
@@ -207,6 +215,8 @@ const ES: I18nStrings = {
     collection: "Colecciones", collectionAll: "Todo",
     deck: "Vista tarjeta", list: "Vista lista",
     pdfDownload: "Descargar PDF",
+    searchPlaceholder: "Buscar palabra, significado, ejemplo…",
+    searchEmpty: "Sin resultados",
   },
   study: {
     upgradeTitle: "Mejorar expresión", upgradeDesc: "Haz tus frases más naturales",

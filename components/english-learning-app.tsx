@@ -938,12 +938,12 @@ export function EnglishLearningApp() {
 
   const masteredCount = sourceScopedVocabulary.filter((v) => v.is_mastered).length
   const wordCount = sourceScopedVocabulary.filter((v) => ["word", "idiom", "slang", "phrasal_verb"].includes(v.type)).length
-  const expressionCount = sourceScopedVocabulary.filter((v) => v.type === "expression").length
+  const expressionCount = sourceScopedVocabulary.filter((v) => v.type === "expression" || v.type === "translate").length
   const rephraseCount = sourceScopedVocabulary.filter((v) => v.type === "rephrase").length
   const filteredVocabulary = sourceScopedVocabulary.filter((item) => {
     if (vocabFilter === "all") return true
     if (vocabFilter === "word") return ["word", "idiom", "slang", "phrasal_verb"].includes(item.type)
-    if (vocabFilter === "expression") return item.type === "expression"
+    if (vocabFilter === "expression") return item.type === "expression" || item.type === "translate"
     if (vocabFilter === "rephrase") return item.type === "rephrase"
     return true
   })
@@ -2045,7 +2045,9 @@ function normalizeVocabType(type: VocabularyItem["type"] | string): VocabularyIt
     normalized === "idiom" ||
     normalized === "slang" ||
     normalized === "phrasal_verb" ||
-    normalized === "expression"
+    normalized === "expression" ||
+    normalized === "rephrase" ||
+    normalized === "translate"
   ) {
     return normalized
   }

@@ -12,6 +12,7 @@ const TYPE_LABELS: Record<string, string> = {
   phrasal_verb: "Phrasal verb",
   expression: "Expression",
   rephrase: "Rephrase",
+  translate: "Translate",
 }
 
 function escapeHtml(value: string): string {

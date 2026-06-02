@@ -11,7 +11,7 @@ export interface VocabularyItem {
   id: string
   conversation_id: string | null
   word: string
-  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression" | "rephrase"
+  type: "word" | "idiom" | "slang" | "phrasal_verb" | "expression" | "rephrase" | "translate"
   source?: "session" | "tutor" | "manual"
   collection?: string | null
   definition: string | null
