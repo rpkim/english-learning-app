@@ -54,6 +54,42 @@ export function getKoreanTranslationText(raw: unknown): string {
   )
 }
 
+function parseRephraseAlternatives(item: VocabularyItem): { text: string; note?: string }[] {
+  const alts: { text: string; note?: string }[] = []
+  const seen = new Set<string>()
+  const add = (text: string, note?: string) => {
+    const t = text.trim()
+    if (!t || seen.has(t)) return
+    seen.add(t)
+    alts.push({ text: t, note: note?.trim() || undefined })
+  }
+  for (const line of (item.context ?? "").split("\n")) {
+    const m = line.match(/^•\s*(.+?)(?:\s*—\s*(.+))?$/)
+    if (m) add(m[1], m[2])
+  }
+  if (item.example_sentence?.trim()) {
+    const ex = item.example_sentence.trim()
+    if (!seen.has(ex)) add(ex)
+  }
+  return alts
+}
+
+function parseRephraseExplanation(item: VocabularyItem): string {
+  const fromKo = getKoreanTranslationText(item.korean_translation)
+  if (fromKo) return fromKo
+  const ctx = (item.context ?? "").trim()
+  if (!ctx) return ""
+  if (!ctx.includes("•")) return ctx
+  const first = ctx.split(/\n\n+/)[0]?.trim() ?? ""
+  return first.startsWith("•") ? "" : first
+}
+
+function rephraseHeadline(item: VocabularyItem): string {
+  const improved = item.definition?.trim()
+  if (!improved) return "표현 교정"
+  return improved.length > 72 ? `${improved.slice(0, 72)}…` : improved
+}
+
 // ── Section label ──────────────────────────────────────────────────────────
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -120,6 +156,9 @@ export function VocabularyCard({
   }, [item.id, item.extra_examples, item.etymology, item.related_forms, item.view_count, item.user_sentences])
 
   const koreanText = getKoreanTranslationText(item.korean_translation)
+  const isRephrase = item.type === "rephrase"
+  const rephraseAlts = isRephrase ? parseRephraseAlternatives(item) : []
+  const rephraseExplanation = isRephrase ? parseRephraseExplanation(item) : ""
 
   const runDeepDive = async (mode: "examples" | "etymology") => {
     setAiError(null)
@@ -242,7 +281,7 @@ export function VocabularyCard({
       {/* Word + badges */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h3 className={cn("font-bold tracking-tight", variant === "full" ? "text-2xl" : "text-lg")}>
-          {item.word}
+          {isRephrase ? rephraseHeadline(item) : item.word}
         </h3>
         <span className={cn("rounded-full border px-2 py-0 text-[10px] font-medium leading-5", TYPE_COLORS[item.type] ?? TYPE_COLORS.word)}>
           {TYPE_LABELS[item.type] ?? item.type}
@@ -259,15 +298,87 @@ export function VocabularyCard({
         )}
         <button
           type="button"
-          onClick={() => speak(item.word)}
+          onClick={() => speak(isRephrase && item.definition ? item.definition : item.word)}
           className="ml-auto text-muted-foreground/50 hover:text-foreground transition-colors"
         >
-          {speakingText === item.word
+          {speakingText === (isRephrase && item.definition ? item.definition : item.word)
             ? <VolumeX className="h-4 w-4 animate-pulse text-primary" />
             : <Volume2 className="h-4 w-4" />}
         </button>
       </div>
 
+      {isRephrase ? (
+        <>
+          <div className="mb-3">
+            <SectionLabel>원문</SectionLabel>
+            <div className="flex items-start gap-2">
+              <p className="flex-1 text-sm leading-relaxed text-foreground/60 line-through">{item.word}</p>
+              <button
+                type="button"
+                onClick={() => speak(item.word)}
+                className="shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
+              >
+                {speakingText === item.word
+                  ? <VolumeX className="h-3.5 w-3.5 animate-pulse text-primary" />
+                  : <Volume2 className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {item.definition && (
+            <div className="mb-3">
+              <SectionLabel>개선된 표현</SectionLabel>
+              <div className="flex items-start gap-2">
+                <p className="flex-1 text-[15px] font-semibold leading-relaxed text-teal-700 dark:text-teal-400">
+                  {item.definition}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => speak(item.definition!)}
+                  className="shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
+                >
+                  {speakingText === item.definition
+                    ? <VolumeX className="h-3.5 w-3.5 animate-pulse text-primary" />
+                    : <Volume2 className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {rephraseAlts.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <SectionLabel>다른 표현</SectionLabel>
+              {rephraseAlts.map((alt, i) => (
+                <div key={i} className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 text-sm font-medium leading-relaxed">{alt.text}</p>
+                    <button
+                      type="button"
+                      onClick={() => speak(alt.text)}
+                      className="shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
+                    >
+                      {speakingText === alt.text
+                        ? <VolumeX className="h-3 w-3 animate-pulse text-primary" />
+                        : <Volume2 className="h-3 w-3" />}
+                    </button>
+                  </div>
+                  {alt.note && <p className="mt-0.5 text-xs text-muted-foreground">{alt.note}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {rephraseExplanation && (
+            <div className="mb-3">
+              <SectionLabel>설명</SectionLabel>
+              <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
+                {rephraseExplanation}
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
       {/* Korean meaning */}
       {koreanText ? (
         <div className="mb-3">
@@ -326,6 +437,8 @@ export function VocabularyCard({
             {item.context}
           </p>
         </div>
+      )}
+        </>
       )}
 
       {/* AI deep dive */}
