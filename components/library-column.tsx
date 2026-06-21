@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Conversation, ConversationGroup, VocabularyItem, TutorSession } from "@/lib/types"
 import { VocabularyCard, getKoreanTranslationText } from "@/components/vocabulary-card"
 import { VocabularyDeck } from "@/components/vocabulary-deck"
@@ -25,6 +25,8 @@ import {
   GalleryHorizontal,
   Sparkles,
   Search,
+  ChevronDown,
+  ChevronUp,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -174,6 +176,11 @@ export function LibraryColumn({
   const [isOrganizing, setIsOrganizing] = useState(false)
   const [collectionFilter, setCollectionFilter] = useState<string | null>(null)
   const [vocabSearchQuery, setVocabSearchQuery] = useState("")
+  const [vocabToolbarExpanded, setVocabToolbarExpanded] = useState(false)
+
+  useEffect(() => {
+    setVocabToolbarExpanded(window.matchMedia("(min-width: 640px)").matches)
+  }, [])
 
   const scopeLabel =
     vocabSourceFilter === "tutor"
@@ -190,6 +197,14 @@ export function LibraryColumn({
 
   const showSourceFilterClear = vocabSourceFilter !== "all"
   const showConversationFilterClear = vocabSourceFilter === "all" && selectedConversationId
+
+  const hasActiveSearch = vocabSearchQuery.trim().length > 0
+  const hasActiveFilters =
+    hasActiveSearch ||
+    vocabSourceFilter !== "all" ||
+    vocabFilter !== "all" ||
+    collectionFilter !== null ||
+    hideMastered
 
   const tabBar = hideTabs ? null : (
     <div className="border-border shrink-0 border-b px-3 pt-2 sm:px-4">
@@ -262,9 +277,20 @@ export function LibraryColumn({
 
   const vocabToolbar = (
     <div className="border-border flex min-w-0 shrink-0 flex-col gap-2 border-b px-3 py-2.5 sm:px-4">
-      {/* Row 1: Scope label + mastered count */}
+      {/* Row 1: Scope label + collapse toggle */}
       <div className="flex min-w-0 items-center gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{scopeLabel}</p>
+        <button
+          type="button"
+          onClick={() => setVocabToolbarExpanded((p) => !p)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          aria-expanded={vocabToolbarExpanded}
+          title={vocabToolbarExpanded ? "필터 접기" : "필터 펼치기"}
+        >
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{scopeLabel}</p>
+          {vocabToolbarExpanded
+            ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+            : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        </button>
         {(showSourceFilterClear || showConversationFilterClear) && (
           <button onClick={onShowAllVocabulary} className="shrink-0 text-[11px] text-primary hover:underline">
             전체 보기
@@ -278,6 +304,38 @@ export function LibraryColumn({
         )}
       </div>
 
+      {!vocabToolbarExpanded && hasActiveFilters && (
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {hasActiveSearch && (
+            <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              검색
+            </span>
+          )}
+          {vocabSourceFilter !== "all" && (
+            <span className="shrink-0 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+              {vocabSourceFilter === "tutor" ? "Tutor" : vocabSourceFilter === "session" ? "Session" : vocabSourceFilter}
+            </span>
+          )}
+          {vocabFilter !== "all" && (
+            <span className="shrink-0 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+              {vocabFilter === "word" ? strings.words.words : vocabFilter === "expression" ? strings.words.expression : strings.words.rephrase}
+            </span>
+          )}
+          {collectionFilter && (
+            <span className="shrink-0 max-w-[8rem] truncate rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-700 dark:text-violet-300">
+              {collectionFilter}
+            </span>
+          )}
+          {hideMastered && (
+            <span className="shrink-0 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+              완료 숨김
+            </span>
+          )}
+        </div>
+      )}
+
+      {vocabToolbarExpanded && (
+        <>
       {/* Search */}
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50" />
@@ -492,6 +550,8 @@ export function LibraryColumn({
           </div>
         )
       })()}
+        </>
+      )}
     </div>
   )
 
@@ -502,8 +562,6 @@ export function LibraryColumn({
     if (q) list = list.filter((v) => matchesVocabSearch(v, q))
     return list
   })()
-
-  const hasActiveSearch = vocabSearchQuery.trim().length > 0
 
   const vocabBody = (
     <div className="min-h-0 flex-1 overflow-hidden">
