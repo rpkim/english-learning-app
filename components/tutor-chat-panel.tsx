@@ -282,6 +282,7 @@ function EmptyState({ activeQuick }: { activeQuick: QuickKind }) {
 type QueueItem = {
   id: string
   query: string
+  context?: string
   kind: QuickKind
   status: "loading" | "done" | "error"
   result?: LookupResult
@@ -333,6 +334,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
   const [items, setItems] = useState<QueueItem[]>([])
   const [activeQuick, setActiveQuick] = useState<QuickKind>("meaning")
   const [draft, setDraft] = useState("")
+  const [contextDraft, setContextDraft] = useState("")
   const [isListening, setIsListening] = useState(false)
   const { speak, speakingText } = useTts()
   const { locale, strings } = useLocale()
@@ -399,12 +401,13 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
   const submit = () => {
     const text = draft.trim()
     if (!text) return
+    const context = contextDraft.trim()
     const id = crypto.randomUUID()
     const kind = activeQuick
     setDraft("")
     recognitionRef.current?.stop()
     // Add loading item at top of feed
-    setItems((prev) => [{ id, query: text, kind, status: "loading" }, ...prev])
+    setItems((prev) => [{ id, query: text, context: context || undefined, kind, status: "loading" }, ...prev])
     // Scroll feed to top
     requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }))
     // Background fetch — doesn't block input
@@ -413,13 +416,13 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
         const res = await fetch("/api/tutor-lookup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, type: kind, targetLang: locale }),
+          body: JSON.stringify({ text, context: context || undefined, type: kind, targetLang: locale }),
         })
         const data = (await res.json()) as LookupResult
         setItems((prev) => prev.map((it) => it.id === id ? { ...it, status: "done", result: data } : it))
         sessionMessagesRef.current = [
           ...sessionMessagesRef.current,
-          { role: "user", content: text },
+          { role: "user", content: context ? `${text}\n[context] ${context}` : text },
           { role: "assistant", content: JSON.stringify(data) },
         ]
       } catch {
@@ -434,7 +437,11 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
 
   const handleSave = (item: QueueItem) => {
     if (!item.result || !onAddVocabularyItem) return
-    onAddVocabularyItem(makePayload(item.result))
+    const payload = makePayload(item.result)
+    if (item.context) {
+      payload.context = payload.context ? `${item.context}\n${payload.context}` : item.context
+    }
+    onAddVocabularyItem(payload)
     setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, savedFlash: true } : it))
     setTimeout(() => {
       setItems((prev) => prev.filter((it) => it.id !== item.id))
@@ -446,6 +453,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
     sessionMessagesRef.current = []
     setItems([])
     setDraft("")
+    setContextDraft("")
   }
 
   const activeTabMeta = QUICK_TABS.find((t) => t.kind === activeQuick)!
@@ -492,6 +500,12 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                   <>
                     {/* Card body */}
                     <div className="p-4 sm:p-5">
+                      {item.context && (
+                        <p className="mb-3 rounded-lg bg-muted/50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                          <span className="font-semibold text-foreground/70">Context · </span>
+                          {item.context}
+                        </p>
+                      )}
                       {item.result.type === "meaning" && <MeaningCard r={item.result as MeaningResult} speak={speak} speakingText={speakingText} />}
                       {item.result.type === "translate" && <TranslateCard r={item.result as TranslateResult} speak={speak} speakingText={speakingText} />}
                       {item.result.type === "naturalize" && <NaturalizeCard r={item.result as NaturalizeResult} speak={speak} speakingText={speakingText} />}
@@ -627,6 +641,22 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
               <ChevronRight className="h-5 w-5" />
             </button>
           </div>
+        </div>
+
+        <div className="mt-2">
+          <label className="mb-1 block text-[10px] font-medium text-muted-foreground/70">
+            {strings.tutor.contextLabel}
+          </label>
+          <Input
+            value={contextDraft}
+            onChange={(e) => setContextDraft(e.target.value)}
+            placeholder={strings.tutor.contextPlaceholder}
+            className="h-8 border-border/50 bg-muted/20 px-3 text-[13px] shadow-none placeholder:text-muted-foreground/40"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); submit() }
+              if (e.key === "Escape") setContextDraft("")
+            }}
+          />
         </div>
       </div>
     </div>
