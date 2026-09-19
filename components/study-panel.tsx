@@ -6,7 +6,7 @@ import {
   Mic, MicOff, Sparkles, ArrowRight, BookOpen, ChevronDown, ChevronUp,
   Loader2, RotateCcw, Volume2, VolumeX, Check, Trash2,
   ChevronRight, ChevronLeft, Brain, Pencil, Trophy, Star, RefreshCw, Eye, EyeOff,
-  ThumbsUp, ThumbsDown, X as XIcon, Languages, BarChart3, Target, Lightbulb, Plus, PenLine,
+  ThumbsUp, ThumbsDown, X as XIcon, Languages, BarChart3, Target, Lightbulb, Plus, PenLine, Headphones,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { VocabularyItem, TutorSession, UserSentence } from "@/lib/types"
@@ -14,6 +14,7 @@ import type { StudyInsightsResult } from "@/app/api/study-insights/route"
 import type { NextWordRec } from "@/app/api/study-insights-words/route"
 import type { AddVocabPayload } from "@/components/add-vocab-dialog"
 import { getKoreanTranslationText } from "@/components/vocabulary-card"
+import { ListenMode } from "@/components/listen-mode"
 import type { UpgradeResult } from "@/app/api/study-upgrade/route"
 import type { StoryResult } from "@/app/api/study-story/route"
 import type { ChallengeResult, ChallengeWord } from "@/app/api/study-challenge/route"
@@ -1624,7 +1625,7 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
   )
 }
 
-type PanelMode = "upgrade" | "story" | "quiz" | "challenge" | "translate" | "insights" | "my-sentences"
+type PanelMode = "upgrade" | "story" | "quiz" | "listen" | "challenge" | "translate" | "insights" | "my-sentences"
 
 function extractTutorQueries(sessions: TutorSession[]) {
   const out: Array<{ type: "meaning" | "translate" | "naturalize"; query: string }> = []
@@ -2147,7 +2148,8 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
   }
 
   const PRIMARY_MODES: ModeEntry[] = [
-    { key: "quiz",      label: "단어 학습",   icon: Brain,     desc: "단어 암기 · 플래시카드 퀴즈",   group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { key: "quiz",      label: "단어 학습",   icon: Brain,      desc: "단어 암기 · 플래시카드 퀴즈",   group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { key: "listen",    label: "단어 듣기",   icon: Headphones, desc: "들으면서 암기 · 백그라운드 재생", group: "practice", color: "text-sky-500 bg-sky-500/10 border-sky-500/20" },
     { key: "insights",  label: "패턴 분석",   icon: BarChart3,  desc: "단어·질문 AI 학습 인사이트", group: "create", color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
     { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점",   group: "practice", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
     { key: "translate", label: "영작 연습",   icon: Languages, desc: "한국어 → 영어 영작 후 AI 첨삭", group: "practice", color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
@@ -2215,6 +2217,12 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
             vocabulary={vocabulary}
             quizVocabulary={quizVocabulary ?? insightsVocabulary ?? vocabulary}
             onMasterItem={onMasterItem}
+          />
+        )}
+        {mode === "listen" && (
+          <ListenMode
+            vocabulary={vocabulary}
+            listenVocabulary={quizVocabulary ?? insightsVocabulary ?? vocabulary}
           />
         )}
         {mode === "challenge" && <ChallengeMode vocabulary={vocabulary} />}
