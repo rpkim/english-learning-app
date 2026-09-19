@@ -21,6 +21,7 @@ interface I18nStrings {
     save: string; pass: string; clearAll: string
     emptyMeaning: string; emptyTranslate: string; emptyNaturalize: string
     sending: string; sessionHint: string
+    contextLabel: string; contextPlaceholder: string
   }
   words: {
     all: string; words: string; expression: string; rephrase: string
@@ -66,6 +67,7 @@ const KO: I18nStrings = {
     emptyTranslate: "한국어 문장을 입력하면 자연스러운 영어로 번역해드려요",
     emptyNaturalize: "영어 표현을 입력하면 더 자연스럽게 다듬어드려요",
     sending: "⌘+Enter 전송", sessionHint: "저장한 단어",
+    contextLabel: "Context (선택)", contextPlaceholder: "어디서 봤는지, 어떤 상황인지 적어 주세요",
   },
   words: {
     all: "전체", words: "단어", expression: "표현", rephrase: "패러프레이즈",
@@ -112,6 +114,7 @@ const EN: I18nStrings = {
     emptyTranslate: "Enter a sentence to get a natural English translation",
     emptyNaturalize: "Enter an expression to get a more natural rephrasing",
     sending: "⌘+Enter to send", sessionHint: "saved words",
+    contextLabel: "Context (optional)", contextPlaceholder: "Where you saw it, or the situation",
   },
   words: {
     all: "All", words: "Words", expression: "Expression", rephrase: "Rephrase",
@@ -158,6 +161,7 @@ const JA: I18nStrings = {
     emptyTranslate: "文を入力すると自然な英語に翻訳します",
     emptyNaturalize: "英語表現を入力するとより自然に言い換えます",
     sending: "⌘+Enter 送信", sessionHint: "保存した単語",
+    contextLabel: "Context (任意)", contextPlaceholder: "どこで見たか、どんな状況か",
   },
   words: {
     all: "全て", words: "単語", expression: "表現", rephrase: "言い換え",
@@ -204,6 +208,7 @@ const ES: I18nStrings = {
     emptyTranslate: "Escribe una oración para obtener una traducción natural al inglés",
     emptyNaturalize: "Escribe una expresión para reformularla más naturalmente",
     sending: "⌘+Enter para enviar", sessionHint: "palabras guardadas",
+    contextLabel: "Context (opcional)", contextPlaceholder: "Dónde lo viste o en qué situación",
   },
   words: {
     all: "Todo", words: "Palabras", expression: "Expresión", rephrase: "Reformular",

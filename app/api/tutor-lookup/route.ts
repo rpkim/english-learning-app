@@ -32,9 +32,18 @@ export interface NaturalizeResult {
 
 export type LookupResult = MeaningResult | TranslateResult | NaturalizeResult
 
-function buildPrompts(lang: string): Record<LookupType, (text: string) => string> {
+function contextBlock(context?: string): string {
+  const c = context?.trim()
+  if (!c) return ""
+  return `
+
+Learner-provided context (use this to disambiguate meaning, pick the right sense/tone, and tailor examples):
+"${c.replace(/"/g, "'")}"`
+}
+
+function buildPrompts(lang: string): Record<LookupType, (text: string, context?: string) => string> {
   return {
-    meaning: (text) => `You are an English tutor. Given a word or expression, return a JSON object explaining it in ${lang}.
+    meaning: (text, context) => `You are an English tutor. Given a word or expression, return a JSON object explaining it in ${lang}.
 {
   "query": "<the original word/expression>",
   "meaning": "<concise meaning in ${lang}, 1-2 sentences>",
@@ -47,11 +56,13 @@ function buildPrompts(lang: string): Record<LookupType, (text: string) => string
   "tips": "<optional helpful tip in ${lang}, or null>"
 }
 
-Word/expression: "${text}"
+Word/expression: "${text}"${contextBlock(context)}
+
+If context is provided, explain the sense that fits that situation first, and make examples match it.
 
 Return valid JSON only. No markdown fences.`,
 
-    translate: (text) => `You are an English-to-${lang} translator. Given English text, return a JSON object with exactly these fields:
+    translate: (text, context) => `You are an English-to-${lang} translator. Given English text, return a JSON object with exactly these fields:
 {
   "query": "<original English text>",
   "translation": "<natural ${lang} translation>",
@@ -59,11 +70,13 @@ Return valid JSON only. No markdown fences.`,
   "note": "<helpful ${lang} note about idioms, tone, or context — or null>"
 }
 
-Text: "${text}"
+Text: "${text}"${contextBlock(context)}
+
+If context is provided, choose the translation that fits that situation.
 
 Return valid JSON only. No markdown fences.`,
 
-    naturalize: (text) => `You are a native English speaker helping learners sound more natural. Given an English sentence, return a JSON object with exactly these fields:
+    naturalize: (text, context) => `You are a native English speaker helping learners sound more natural. Given an English sentence, return a JSON object with exactly these fields:
 {
   "query": "<original sentence>",
   "improved": "<most natural-sounding rewrite>",
@@ -74,7 +87,9 @@ Return valid JSON only. No markdown fences.`,
   "changes": "<brief ${lang} explanation of what changed and why>"
 }
 
-Sentence: "${text}"
+Sentence: "${text}"${contextBlock(context)}
+
+If context is provided, rewrite for that situation (audience, formality, setting).
 
 Return valid JSON only. No markdown fences.`,
   }
@@ -91,6 +106,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
     const text = typeof body.text === "string" ? body.text.trim() : ""
+    const context = typeof body.context === "string" ? body.context.trim() : ""
     const type = body.type as LookupType
     const localeCode = typeof body.targetLang === "string" ? body.targetLang : "ko"
     const lang = LANG_MAP[localeCode] ?? "Korean"
@@ -106,7 +122,7 @@ export async function POST(request: Request) {
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
     const prompts = buildPrompts(lang)
-    const result = await model.generateContent(prompts[type](text))
+    const result = await model.generateContent(prompts[type](text, context || undefined))
     const raw = result.response.text().trim()
 
     const cleaned = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim()
