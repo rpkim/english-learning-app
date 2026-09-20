@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "SurviveEnglish desktop app",
   "author": "SurviveEnglish",
+  "license": "UNLICENSED",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
