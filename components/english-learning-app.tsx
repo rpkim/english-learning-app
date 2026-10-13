@@ -6,6 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { TranscriptionColumn } from "@/components/transcription-column"
 import { LibraryColumn } from "@/components/library-column"
 import { ConfigDialog } from "@/components/config-dialog"
+import { ApiKeysDialog } from "@/components/api-keys-panel"
 import { StudyPanel } from "@/components/study-panel"
 import { ConversationHistory } from "@/components/conversation-history"
 import { VocabularyItem, Conversation, ExtractedItem, ConversationGroup } from "@/lib/types"
@@ -34,6 +35,7 @@ import {
   Loader2,
   AlertCircle,
   Settings2,
+  KeyRound,
   Cloud,
   Monitor,
   Mic,
@@ -85,6 +87,7 @@ export function EnglishLearningApp() {
   // Storage config
   const [storageConfig, setStorageConfig] = useState<StorageConfig>(() => getStorageConfig())
   const [showConfig, setShowConfig] = useState(false)
+  const [showApiKeys, setShowApiKeys] = useState(false)
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [user, setUser] = useState<User | null>(null)
 
@@ -1546,8 +1549,17 @@ export function EnglishLearningApp() {
                   <span className="max-w-[100px] truncate">{user.user_metadata?.full_name as string ?? user.email}</span>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuLabel className="text-xs font-normal text-muted-foreground truncate">{user.email}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-xs" onClick={() => setShowApiKeys(true)}>
+                  <KeyRound className="mr-2 h-3.5 w-3.5" />
+                  API 키
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-xs" onClick={() => setShowConfig(true)}>
+                  <Settings2 className="mr-2 h-3.5 w-3.5" />
+                  설정
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => void handleSignOut()} className="text-destructive focus:text-destructive">
                   로그아웃
@@ -1601,9 +1613,13 @@ export function EnglishLearningApp() {
                   )}
                   {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-xs" onClick={() => setShowApiKeys(true)}>
+                  <KeyRound className="mr-2 h-3.5 w-3.5" />
+                  API 키
+                </DropdownMenuItem>
                 <DropdownMenuItem className="text-xs" onClick={() => setShowConfig(true)}>
                   <Settings2 className="mr-2 h-3.5 w-3.5" />
-                  Settings & storage
+                  설정
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-xs text-destructive focus:text-destructive" onClick={() => void handleSignOut()}>
@@ -1949,6 +1965,7 @@ export function EnglishLearningApp() {
           toast.success("Settings saved")
         }}
       />
+      <ApiKeysDialog open={showApiKeys} onOpenChange={setShowApiKeys} />
 
       <input
         ref={transcriptFileInputRef}

@@ -124,3 +124,4 @@ alter table public.api_keys enable row level security;
 drop policy if exists "own api keys" on public.api_keys;
 create policy "own api keys" on public.api_keys
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+grant select, insert, update, delete on table public.api_keys to authenticated;

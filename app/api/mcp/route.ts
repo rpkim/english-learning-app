@@ -63,7 +63,7 @@ const TOOLS = [
   },
   {
     name: "add_vocabulary",
-    description: "Add a word or expression to the user's word list.",
+    description: "Add a word or expression to the user's word list. Assigned to 📥 Inbox unless collection is set.",
     inputSchema: {
       type: "object",
       properties: {
@@ -73,7 +73,7 @@ const TOOLS = [
         korean_translation: { type: "string" },
         example_sentence: { type: "string" },
         context: { type: "string" },
-        collection: { type: "string" },
+        collection: { type: "string", description: "Optional. Defaults to 📥 Inbox." },
       },
       required: ["word"],
     },
@@ -203,9 +203,9 @@ async function callTool(userId: string, name: string, args: Record<string, unkno
         korean_translation: str("korean_translation") || null,
         example_sentence: str("example_sentence") || null,
         context: str("context") || null,
-        collection: str("collection") || null,
         is_mastered: false,
         conversation_id: null,
+        ...(str("collection") ? { collection: str("collection") } : {}),
       }))
     }
     case "update_vocabulary": {

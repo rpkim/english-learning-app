@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto"
 import { createServerClient } from "@supabase/ssr"
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { getSupabaseAdmin, hasServiceRole } from "@/lib/supabase-admin"
 
@@ -9,6 +10,11 @@ export type ApiAuth = {
   userId: string
   via: "session" | "api_key"
   keyId?: string
+}
+
+export type SessionScopedClient = {
+  user: User
+  supabase: SupabaseClient
 }
 
 export function hashApiKey(key: string): string {
@@ -23,12 +29,27 @@ export function keyPrefixOf(fullKey: string): string {
   return fullKey.slice(0, API_KEY_PREFIX.length + 8)
 }
 
-export async function getSessionClient() {
+function publicSupabaseEnv(): { url: string; anon: string } | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anon) return null
+  return { url, anon }
+}
+
+export function publicSupabaseConfigured(): boolean {
+  return publicSupabaseEnv() !== null
+}
+
+function bearerFrom(request: Request | undefined): string | undefined {
+  const header = request?.headers.get("authorization") ?? ""
+  return header.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+}
+
+export async function getSessionClient() {
+  const env = publicSupabaseEnv()
+  if (!env) return null
   const cookieStore = await cookies()
-  return createServerClient(url, anon, {
+  return createServerClient(env.url, env.anon, {
     cookies: {
       getAll() { return cookieStore.getAll() },
       setAll(cookiesToSet) {
@@ -42,7 +63,44 @@ export async function getSessionClient() {
   })
 }
 
-async function userFromSession(): Promise<string | null> {
+function clientFromAccessToken(accessToken: string): SupabaseClient | null {
+  const env = publicSupabaseEnv()
+  if (!env) return null
+  return createClient(env.url, env.anon, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  })
+}
+
+/**
+ * Signed-in user + anon-key client for key management (no service role).
+ * Prefers a fresh Supabase access token from Authorization, then session cookies.
+ * Ignores se_live_ API keys — those cannot create/list/revoke keys.
+ */
+export async function getUserScopedClient(request: Request): Promise<SessionScopedClient | null> {
+  const bearer = bearerFrom(request)
+  if (bearer && !bearer.startsWith(API_KEY_PREFIX)) {
+    const jwtClient = clientFromAccessToken(bearer)
+    if (jwtClient) {
+      const { data: { user } } = await jwtClient.auth.getUser(bearer)
+      if (user) return { user, supabase: jwtClient }
+    }
+  }
+
+  const cookieClient = await getSessionClient()
+  if (cookieClient) {
+    const { data: { user } } = await cookieClient.auth.getUser()
+    if (user) return { user, supabase: cookieClient }
+  }
+
+  return null
+}
+
+async function userFromSession(request?: Request): Promise<string | null> {
+  if (request) {
+    const scoped = await getUserScopedClient(request)
+    return scoped?.user.id ?? null
+  }
   const supabase = await getSessionClient()
   if (!supabase) return null
   const { data: { user } } = await supabase.auth.getUser()
@@ -69,7 +127,7 @@ export async function authenticateV1(request: Request): Promise<ApiAuth | { erro
     return { userId: data.user_id as string, via: "api_key", keyId: data.id as string }
   }
 
-  const sessionUser = await userFromSession()
+  const sessionUser = await userFromSession(request)
   if (sessionUser) return { userId: sessionUser, via: "session" }
 
   if (bearer) return { error: "Invalid bearer token", status: 401 }

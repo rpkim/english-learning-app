@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -22,7 +21,7 @@ import {
   type LocalAsrModel,
 } from "@/lib/storage-config"
 import { cn } from "@/lib/utils"
-import { Copy, Check, KeyRound, Loader2, Trash2 } from "lucide-react"
+import { ApiKeysPanel } from "@/components/api-keys-panel"
 
 interface ConfigDialogProps {
   open: boolean
@@ -69,12 +68,14 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
           <DialogHeader className="pr-8 text-left">
             <DialogTitle>설정</DialogTitle>
             <DialogDescription>
-              음성 인식, 번역, REST/MCP API 키를 설정합니다.
+              음성 인식, 번역을 설정하고 API 키를 발급합니다. 키는 발급 즉시 적용됩니다.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
+            <ApiKeysPanel active={open} />
+
+            <div className="space-y-1.5 border-t border-border/60 pt-4">
               <Label className="text-xs">음성 인식 모델 (로컬, 오픈소스)</Label>
               <Select value={localAsrModel} onValueChange={(value) => setLocalAsrModel(value as LocalAsrModel)}>
                 <SelectTrigger className="h-10 w-full text-sm">
@@ -118,8 +119,6 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
                 </SelectContent>
               </Select>
             </div>
-
-            <ApiKeysSection open={open} />
           </div>
         </div>
 
@@ -138,154 +137,6 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-type ApiKeyRow = {
-  id: string
-  name: string
-  key_prefix: string
-  created_at: string
-  last_used_at: string | null
-}
-
-function ApiKeysSection({ open }: { open: boolean }) {
-  const [keys, setKeys] = useState<ApiKeyRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [createdKey, setCreatedKey] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/v1/keys")
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to load API keys")
-        setKeys([])
-        return
-      }
-      setKeys(Array.isArray(data.items) ? data.items : [])
-    } catch {
-      setError("Failed to load API keys")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) {
-      setCreatedKey(null)
-      setCopied(false)
-      setName("")
-      return
-    }
-    void load()
-  }, [open, load])
-
-  async function handleCreate() {
-    setCreating(true)
-    setError(null)
-    setCopied(false)
-    try {
-      const res = await fetch("/api/v1/keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || "default" }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to create key")
-        return
-      }
-      setCreatedKey(typeof data.key === "string" ? data.key : null)
-      setName("")
-      await load()
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  async function handleRevoke(id: string) {
-    setError(null)
-    const res = await fetch(`/api/v1/keys/${id}`, { method: "DELETE" })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      setError(typeof data.error === "string" ? data.error : "Failed to revoke key")
-      return
-    }
-    setKeys((prev) => prev.filter((k) => k.id !== id))
-  }
-
-  async function handleCopy() {
-    if (!createdKey) return
-    await navigator.clipboard.writeText(createdKey)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
-  }
-
-  return (
-    <div className="space-y-2 border-t border-border/60 pt-4">
-      <div className="flex items-center gap-1.5">
-        <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
-        <Label className="text-xs">API keys (REST / MCP)</Label>
-      </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Agents and scripts use <code className="text-[10px]">Authorization: Bearer se_live_…</code>.
-        The full key is shown only once.
-      </p>
-
-      <div className="flex gap-2">
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Key name (optional)"
-          className="h-9 text-sm"
-        />
-        <Button type="button" size="sm" className="h-9 shrink-0" onClick={() => void handleCreate()} disabled={creating}>
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
-        </Button>
-      </div>
-
-      {createdKey && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2">
-          <p className="mb-1 text-[11px] text-amber-800 dark:text-amber-200">Copy now — it will not be shown again.</p>
-          <div className="flex items-center gap-1.5">
-            <code className="min-w-0 flex-1 truncate text-[11px]">{createdKey}</code>
-            <Button type="button" variant="outline" size="icon" className="h-7 w-7" onClick={() => void handleCopy()}>
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="text-[11px] text-destructive">{error}</p>}
-
-      {loading ? (
-        <p className="text-[11px] text-muted-foreground">Loading keys…</p>
-      ) : keys.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No keys yet.</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {keys.map((k) => (
-            <li key={k.id} className="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{k.name}</p>
-                <p className="truncate font-mono text-[10px] text-muted-foreground">{k.key_prefix}…</p>
-              </div>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => void handleRevoke(k.id)}>
-                <Trash2 className="h-3.5 w-3.5" />
-                <span className="sr-only">Revoke</span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   )
 }
 
