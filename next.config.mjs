@@ -6,6 +6,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  serverExternalPackages: ["@resvg/resvg-js"],
   // Allow SharedArrayBuffer for Whisper WASM (required for @xenova/transformers)
   async headers() {
     return [

@@ -204,6 +204,7 @@ Signed-in session cookies also work from the browser. CORS allows cross-origin R
 | `DELETE` | `/api/v1/keys/:id` | Revoke (session only) |
 | `GET` `POST` | `/api/v1/vocabulary` | Query: `q`, `collection`, `type`, `mastered`, `limit`, `offset` |
 | `GET` `PATCH` `DELETE` | `/api/v1/vocabulary/:id` | PATCH may include `add_sentence` |
+| `GET` | `/api/v1/vocabulary/:id/image` | 1080×1350 PNG card (`?format=png`). Auth required. |
 | `GET` `POST` | `/api/v1/conversations` | |
 | `GET` `PATCH` `DELETE` | `/api/v1/conversations/:id` | |
 | `POST` | `/api/v1/tutor/lookup` | Body: `{ text, type, context?, targetLang? }` — `type` is `meaning` \| `translate` \| `naturalize` |
@@ -220,6 +221,12 @@ curl -s https://YOUR_DOMAIN/api/v1/tutor/lookup \
   -H "Authorization: Bearer se_live_…" \
   -H "Content-Type: application/json" \
   -d '{"text":"get it across","type":"meaning","context":"standup meeting"}'
+```
+
+```bash
+curl -sS -o survive.png \
+  https://YOUR_DOMAIN/api/v1/vocabulary/VOCAB_ID/image \
+  -H "Authorization: Bearer se_live_…"
 ```
 
 ### MCP
@@ -239,7 +246,7 @@ Streamable HTTP JSON-RPC at **`POST /api/mcp`** (protocol `2025-03-26`). Cursor 
 }
 ```
 
-Tools: `list_vocabulary`, `get_vocabulary`, `add_vocabulary`, `update_vocabulary`, `delete_vocabulary`, `add_user_sentence`, `list_conversations`, `get_conversation`, `tutor_lookup`.
+Tools: `list_vocabulary`, `get_vocabulary`, `get_vocabulary_image`, `add_vocabulary`, `update_vocabulary`, `delete_vocabulary`, `add_user_sentence`, `list_conversations`, `get_conversation`, `tutor_lookup`.
 
 ---
 

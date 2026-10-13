@@ -13,6 +13,7 @@ export function GET() {
       me: "GET /api/v1/me",
       keys: "GET|POST /api/v1/keys  DELETE /api/v1/keys/:id",
       vocabulary: "GET|POST /api/v1/vocabulary  GET|PATCH|DELETE /api/v1/vocabulary/:id",
+      vocabularyImage: "GET /api/v1/vocabulary/:id/image?format=png",
       conversations: "GET|POST /api/v1/conversations  GET|PATCH|DELETE /api/v1/conversations/:id",
       tutorLookup: "POST /api/v1/tutor/lookup",
       mcp: "POST /api/mcp",

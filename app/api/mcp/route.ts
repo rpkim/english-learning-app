@@ -12,6 +12,7 @@ import {
 } from "@/lib/api-v1/store"
 import { hasServiceRole } from "@/lib/supabase-admin"
 import { runTutorLookup, type LookupType } from "@/lib/tutor-lookup"
+import { renderVocabCardPng } from "@/lib/vocab-card-png"
 import type { VocabularyItem } from "@/lib/types"
 
 export const maxDuration = 60
@@ -55,6 +56,15 @@ const TOOLS = [
   {
     name: "get_vocabulary",
     description: "Get one vocabulary item by id.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "get_vocabulary_image",
+    description: "Export one vocabulary item as a 1080×1350 PNG card image (same look as the in-app Image download).",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string" } },
@@ -192,6 +202,17 @@ async function callTool(userId: string, name: string, args: Record<string, unkno
       const item = await getVocabulary(userId, str("id"))
       if (!item) throw new Error("Not found")
       return asText(item)
+    }
+    case "get_vocabulary_image": {
+      const item = await getVocabulary(userId, str("id"))
+      if (!item) throw new Error("Not found")
+      const png = await renderVocabCardPng(item)
+      return {
+        content: [
+          { type: "text" as const, text: `Vocabulary card: ${item.word}` },
+          { type: "image" as const, data: png.toString("base64"), mimeType: "image/png" },
+        ],
+      }
     }
     case "add_vocabulary": {
       const word = str("word")
