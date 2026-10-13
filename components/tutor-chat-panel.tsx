@@ -9,7 +9,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { VocabularyItem, TutorChatMessage } from "@/lib/types"
-import type { LookupResult, MeaningResult, TranslateResult, NaturalizeResult } from "@/app/api/tutor-lookup/route"
+import type { LookupResult, MeaningResult, TranslateResult, NaturalizeResult } from "@/lib/tutor-lookup"
 import { useTts } from "@/hooks/use-tts"
 import { useLocale } from "@/lib/locale-context"
 
@@ -291,7 +291,7 @@ type QueueItem = {
 
 function makePayload(result: LookupResult): AddVocabPayload {
   if (result.type === "meaning") {
-    const r = result as import("@/app/api/tutor-lookup/route").MeaningResult
+    const r = result as MeaningResult
     const contextParts = [
       r.examples[1] ? `"${r.examples[1].en}" — ${r.examples[1].ko}` : null,
       r.register ? `Register: ${r.register}` : null,
@@ -305,7 +305,7 @@ function makePayload(result: LookupResult): AddVocabPayload {
       context: contextParts.length ? [r.examples[0]?.ko, ...contextParts].filter(Boolean).join("\n") : r.examples[0]?.ko,
     }
   } else if (result.type === "translate") {
-    const r = result as import("@/app/api/tutor-lookup/route").TranslateResult
+    const r = result as TranslateResult
     return {
       word: r.query,
       type: "translate",
@@ -314,7 +314,7 @@ function makePayload(result: LookupResult): AddVocabPayload {
       context: r.note ?? undefined,
     }
   } else {
-    const r = result as import("@/app/api/tutor-lookup/route").NaturalizeResult
+    const r = result as NaturalizeResult
     const altBullets = r.alternatives
       .map((a) => `• ${a.text}${a.note ? ` — ${a.note}` : ""}`)
       .join("\n")
