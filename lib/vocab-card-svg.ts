@@ -13,13 +13,6 @@ import {
 } from "@/lib/vocab-card"
 import type { VocabularyItem } from "@/lib/types"
 
-export type EmbeddedFontFace = {
-  family: string
-  weight: number
-  data: ArrayBuffer
-  format: "truetype" | "opentype"
-}
-
 function esc(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -62,23 +55,10 @@ function textEl(line: CardText, fontFamily: string): string {
   const anchor = line.align === "center" ? "middle" : "start"
   const italic = line.style === "italic" ? ' font-style="italic"' : ""
   return (
-    `<text x="${line.x}" y="${line.y}" font-size="${line.size}" font-weight="${line.weight}"` +
+    `<text xml:space="preserve" x="${line.x}" y="${line.y}" font-size="${line.size}" font-weight="${line.weight}"` +
     `${italic} fill="${line.color}" font-family="${esc(fontFamily)}"` +
     ` dominant-baseline="${baseline}" text-anchor="${anchor}">${esc(line.text)}</text>`
   )
-}
-
-function fontFaceCss(faces: EmbeddedFontFace[]): string {
-  return faces
-    .map((face) => {
-      const b64 = Buffer.from(face.data).toString("base64")
-      const mime = face.format === "opentype" ? "otf" : "ttf"
-      return (
-        `@font-face{font-family:'${face.family}';font-weight:${face.weight};font-style:normal;` +
-        `src:url(data:font/${mime};base64,${b64}) format('${face.format}');}`
-      )
-    })
-    .join("")
 }
 
 function paintContent(layout: VocabCardLayout, fontFamily: string): string {
@@ -119,13 +99,12 @@ function paintContent(layout: VocabCardLayout, fontFamily: string): string {
 
 export function renderVocabCardSvg(
   item: VocabularyItem,
-  opts?: { measure?: MeasureText; fonts?: EmbeddedFontFace[] },
+  opts?: { measure?: MeasureText; fontFamily?: string },
 ): string {
   const measure = opts?.measure ?? approxMeasureText
   const layout = layoutVocabCard(item, measure)
-  const family = opts?.fonts?.[0]?.family ?? "Noto Sans KR"
-  const fontFamily = `'${family}', Pretendard, 'Noto Sans KR', sans-serif`
-  const faces = opts?.fonts?.length ? `<style type="text/css">${fontFaceCss(opts.fonts)}</style>` : ""
+  // resvg matches this name against fontFiles; do not list missing fallbacks.
+  const fontFamily = opts?.fontFamily ?? "Noto Sans KR"
 
   const cX = VOCAB_CARD_MARGIN
   const cY = VOCAB_CARD_MARGIN
@@ -135,9 +114,8 @@ export function renderVocabCardSvg(
   const accent = roundRectPath(cX, cY, cW, 12, [44, 44, 0, 0])
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${VOCAB_CARD_W}" height="${VOCAB_CARD_H}" viewBox="0 0 ${VOCAB_CARD_W} ${VOCAB_CARD_H}">
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="${VOCAB_CARD_W}" height="${VOCAB_CARD_H}" viewBox="0 0 ${VOCAB_CARD_W} ${VOCAB_CARD_H}">
   <defs>
-    ${faces}
     <linearGradient id="se-bg" x1="0" y1="0" x2="0.6" y2="1">
       <stop offset="0" stop-color="#0c0c1d"/>
       <stop offset="1" stop-color="#08080f"/>

@@ -161,7 +161,7 @@ export function collectCardText(item: VocabularyItem): string {
     "SurviveEnglish",
     "정의",
     "예문",
-    "💡 팁",
+    "팁",
     `"'`,
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-()[] ",
   ].join("")
@@ -331,7 +331,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
     const tipText = item.context.split("\n")[0] ?? ""
     if (tipText.trim()) {
       const label: CardText = {
-        text: "💡 팁",
+        text: "팁",
         x: cx,
         y,
         size: 26,
