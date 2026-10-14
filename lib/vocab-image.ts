@@ -141,13 +141,19 @@ function paintLayout(ctx: CanvasRenderingContext2D, layout: VocabCardLayout) {
     for (const line of layout.tip.lines) paintText(ctx, line)
   }
 
+  const brand = "SurviveEnglish"
+  ctx.font = fontCss(30, "700")
+  const brandW = ctx.measureText(brand).width
+  const brandCenterX = VOCAB_CARD_W / 2
+  const brandDotX = brandCenterX - brandW / 2 - 18
+
   ctx.beginPath()
-  ctx.arc(VOCAB_CARD_W / 2 - 96, layout.brandY, 6, 0, Math.PI * 2)
+  ctx.arc(brandDotX, layout.brandY, 6, 0, Math.PI * 2)
   ctx.fillStyle = p.brandDot
   ctx.fill()
   paintText(ctx, {
-    text: "SurviveEnglish",
-    x: VOCAB_CARD_W / 2,
+    text: brand,
+    x: brandCenterX,
     y: layout.brandY,
     size: 30,
     weight: "700",
