@@ -1,0 +1,25 @@
+---
+description: Signal Field Staff UI guideline for SurviveEnglish
+globs: app/**/*.{tsx,css}, components/**/*.{tsx,css}, docs/**/*
+alwaysApply: false
+---
+
+# Signal Field UI (this project)
+
+Before UI/visual work, read [`docs/design.md`](docs/design.md) (§1 Philosophy + checklist §10).
+
+## Must
+- Clarity · deference · depth (P1–P10)
+- One accent family (`signal` / `--primary`) — never a second brand purple
+- Cards only for interaction; no hero overlays; subtract until meaning breaks
+- Focus-visible, AA contrast, hit targets ≥44px where practical; honor `prefers-reduced-motion`
+- For service briefs: follow §1.5 + [`docs/recommend-map.md`](docs/recommend-map.md) → 1 primary + 2 alts
+
+## Never
+- Purple→indigo on white; cream + terracotta + display serif; broadsheet pastiche
+- Glow / neon / glassmorphism card farms; emoji chrome
+- Inter / Roboto / Arial / system-ui as the *expressive* face when a kit pairing is chosen
+- Silently renaming token roles or forking accent meaning per page
+
+## SurviveEnglish default lean
+Primary mix ≈ `precise-quiet` (signal-teal · plex · default). Soft-product and day-editorial are alts. See recommend-map.
