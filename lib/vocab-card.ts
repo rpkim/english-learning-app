@@ -25,6 +25,221 @@ export function getKorean(raw: unknown): string {
   )
 }
 
+function hashString(input: string): number {
+  let h = 2166136261
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+export type VocabPalette = {
+  id: string
+  bg0: string
+  bg1: string
+  glow: string
+  card: string
+  border: string
+  accent0: string
+  accent1: string
+  accent2: string
+  badgeFill: string
+  badgeBorder: string
+  badgeText: string
+  word: string
+  korean: string
+  body: string
+  label: string
+  quoteFill: string
+  quoteBorder: string
+  quoteText: string
+  tip: string
+  tipDim: string
+  brand: string
+  brandDot: string
+}
+
+/**
+ * Young bright cards — pure white + pastel wash.
+ * Word colors stay vivid mid-tones (never near-black burgundy/ink).
+ */
+export const VOCAB_PALETTES: VocabPalette[] = [
+  {
+    id: "aqua",
+    bg0: "#f3fcfc", bg1: "#e8fafa",
+    glow: "rgba(18,196,192,0.18)",
+    card: "#ffffff",
+    border: "rgba(18,196,192,0.22)",
+    accent0: "#12c4c0", accent1: "#2dd4bf", accent2: "#5eead4",
+    badgeFill: "rgba(18,196,192,0.12)", badgeBorder: "rgba(18,196,192,0.35)", badgeText: "#0d9488",
+    word: "#0f9f9b", korean: "#12c4c0",
+    body: "#475569", label: "#12c4c0",
+    quoteFill: "rgba(18,196,192,0.08)", quoteBorder: "rgba(18,196,192,0.22)", quoteText: "#334155",
+    tip: "#fb923c", tipDim: "#f97316",
+    brand: "rgba(18,196,192,0.65)", brandDot: "#12c4c0",
+  },
+  {
+    id: "sky",
+    bg0: "#f3f9ff", bg1: "#e8f3ff",
+    glow: "rgba(56,189,248,0.18)",
+    card: "#ffffff",
+    border: "rgba(14,165,233,0.2)",
+    accent0: "#0ea5e9", accent1: "#38bdf8", accent2: "#7dd3fc",
+    badgeFill: "rgba(14,165,233,0.12)", badgeBorder: "rgba(14,165,233,0.32)", badgeText: "#0284c7",
+    word: "#0284c7", korean: "#0ea5e9",
+    body: "#475569", label: "#0ea5e9",
+    quoteFill: "rgba(14,165,233,0.08)", quoteBorder: "rgba(14,165,233,0.2)", quoteText: "#334155",
+    tip: "#f59e0b", tipDim: "#fbbf24",
+    brand: "rgba(14,165,233,0.6)", brandDot: "#0ea5e9",
+  },
+  {
+    id: "coral",
+    bg0: "#fff6f5", bg1: "#ffecea",
+    glow: "rgba(251,113,133,0.16)",
+    card: "#ffffff",
+    border: "rgba(251,113,133,0.22)",
+    accent0: "#fb7185", accent1: "#fda4af", accent2: "#fecdd3",
+    badgeFill: "rgba(251,113,133,0.12)", badgeBorder: "rgba(251,113,133,0.32)", badgeText: "#f43f5e",
+    word: "#f43f5e", korean: "#fb7185",
+    body: "#57534e", label: "#f43f5e",
+    quoteFill: "rgba(251,113,133,0.08)", quoteBorder: "rgba(251,113,133,0.2)", quoteText: "#44403c",
+    tip: "#f59e0b", tipDim: "#fbbf24",
+    brand: "rgba(244,63,94,0.55)", brandDot: "#fb7185",
+  },
+  {
+    id: "mint",
+    bg0: "#f3fcf7", bg1: "#e6f9ef",
+    glow: "rgba(52,211,153,0.18)",
+    card: "#ffffff",
+    border: "rgba(52,211,153,0.22)",
+    accent0: "#34d399", accent1: "#6ee7b7", accent2: "#a7f3d0",
+    badgeFill: "rgba(52,211,153,0.12)", badgeBorder: "rgba(52,211,153,0.32)", badgeText: "#10b981",
+    word: "#10b981", korean: "#34d399",
+    body: "#475569", label: "#10b981",
+    quoteFill: "rgba(52,211,153,0.08)", quoteBorder: "rgba(52,211,153,0.2)", quoteText: "#334155",
+    tip: "#fb923c", tipDim: "#fdba74",
+    brand: "rgba(16,185,129,0.55)", brandDot: "#34d399",
+  },
+  {
+    id: "peach",
+    bg0: "#fff8f2", bg1: "#ffefe3",
+    glow: "rgba(251,146,60,0.16)",
+    card: "#ffffff",
+    border: "rgba(251,146,60,0.22)",
+    accent0: "#fb923c", accent1: "#fdba74", accent2: "#fed7aa",
+    badgeFill: "rgba(251,146,60,0.12)", badgeBorder: "rgba(251,146,60,0.32)", badgeText: "#f97316",
+    word: "#ea580c", korean: "#fb923c",
+    body: "#57534e", label: "#f97316",
+    quoteFill: "rgba(251,146,60,0.08)", quoteBorder: "rgba(251,146,60,0.2)", quoteText: "#44403c",
+    tip: "#12c4c0", tipDim: "#2dd4bf",
+    brand: "rgba(249,115,22,0.55)", brandDot: "#fb923c",
+  },
+  {
+    id: "lemon",
+    bg0: "#fffcef", bg1: "#fff7d6",
+    glow: "rgba(250,204,21,0.18)",
+    card: "#ffffff",
+    border: "rgba(250,204,21,0.28)",
+    accent0: "#eab308", accent1: "#facc15", accent2: "#fde047",
+    badgeFill: "rgba(250,204,21,0.16)", badgeBorder: "rgba(234,179,8,0.35)", badgeText: "#ca8a04",
+    word: "#ca8a04", korean: "#eab308",
+    body: "#57534e", label: "#eab308",
+    quoteFill: "rgba(250,204,21,0.1)", quoteBorder: "rgba(250,204,21,0.24)", quoteText: "#44403c",
+    tip: "#12c4c0", tipDim: "#2dd4bf",
+    brand: "rgba(202,138,4,0.55)", brandDot: "#eab308",
+  },
+  {
+    id: "violet",
+    bg0: "#faf7ff", bg1: "#f3ecff",
+    glow: "rgba(167,139,250,0.16)",
+    card: "#ffffff",
+    border: "rgba(167,139,250,0.22)",
+    accent0: "#a78bfa", accent1: "#c4b5fd", accent2: "#ddd6fe",
+    badgeFill: "rgba(167,139,250,0.12)", badgeBorder: "rgba(167,139,250,0.32)", badgeText: "#8b5cf6",
+    word: "#8b5cf6", korean: "#a78bfa",
+    body: "#57534e", label: "#8b5cf6",
+    quoteFill: "rgba(167,139,250,0.08)", quoteBorder: "rgba(167,139,250,0.2)", quoteText: "#44403c",
+    tip: "#fb923c", tipDim: "#fdba74",
+    brand: "rgba(139,92,246,0.55)", brandDot: "#a78bfa",
+  },
+  {
+    id: "pink",
+    bg0: "#fff5fa", bg1: "#ffe8f3",
+    glow: "rgba(244,114,182,0.16)",
+    card: "#ffffff",
+    border: "rgba(244,114,182,0.22)",
+    accent0: "#f472b6", accent1: "#f9a8d4", accent2: "#fbcfe8",
+    badgeFill: "rgba(244,114,182,0.12)", badgeBorder: "rgba(244,114,182,0.32)", badgeText: "#ec4899",
+    word: "#ec4899", korean: "#f472b6",
+    body: "#57534e", label: "#ec4899",
+    quoteFill: "rgba(244,114,182,0.08)", quoteBorder: "rgba(244,114,182,0.2)", quoteText: "#44403c",
+    tip: "#12c4c0", tipDim: "#2dd4bf",
+    brand: "rgba(236,72,153,0.55)", brandDot: "#f472b6",
+  },
+  {
+    id: "lime",
+    bg0: "#f7fcef", bg1: "#eef9d9",
+    glow: "rgba(163,230,53,0.2)",
+    card: "#ffffff",
+    border: "rgba(132,204,22,0.24)",
+    accent0: "#84cc16", accent1: "#a3e635", accent2: "#bef264",
+    badgeFill: "rgba(163,230,53,0.14)", badgeBorder: "rgba(132,204,22,0.35)", badgeText: "#65a30d",
+    word: "#65a30d", korean: "#84cc16",
+    body: "#4b5563", label: "#84cc16",
+    quoteFill: "rgba(163,230,53,0.1)", quoteBorder: "rgba(132,204,22,0.22)", quoteText: "#374151",
+    tip: "#f97316", tipDim: "#fb923c",
+    brand: "rgba(101,163,13,0.55)", brandDot: "#84cc16",
+  },
+  {
+    id: "blueberry",
+    bg0: "#f4f7ff", bg1: "#e8eeff",
+    glow: "rgba(96,165,250,0.18)",
+    card: "#ffffff",
+    border: "rgba(96,165,250,0.24)",
+    accent0: "#60a5fa", accent1: "#93c5fd", accent2: "#bfdbfe",
+    badgeFill: "rgba(96,165,250,0.12)", badgeBorder: "rgba(59,130,246,0.3)", badgeText: "#3b82f6",
+    word: "#3b82f6", korean: "#60a5fa",
+    body: "#475569", label: "#3b82f6",
+    quoteFill: "rgba(96,165,250,0.08)", quoteBorder: "rgba(96,165,250,0.2)", quoteText: "#334155",
+    tip: "#f472b6", tipDim: "#f9a8d4",
+    brand: "rgba(59,130,246,0.55)", brandDot: "#60a5fa",
+  },
+  {
+    id: "tangerine",
+    bg0: "#fff7f0", bg1: "#ffead6",
+    glow: "rgba(249,115,22,0.16)",
+    card: "#ffffff",
+    border: "rgba(249,115,22,0.22)",
+    accent0: "#f97316", accent1: "#fb923c", accent2: "#fdba74",
+    badgeFill: "rgba(249,115,22,0.12)", badgeBorder: "rgba(249,115,22,0.32)", badgeText: "#ea580c",
+    word: "#f97316", korean: "#fb923c",
+    body: "#57534e", label: "#f97316",
+    quoteFill: "rgba(249,115,22,0.08)", quoteBorder: "rgba(249,115,22,0.2)", quoteText: "#44403c",
+    tip: "#3b82f6", tipDim: "#60a5fa",
+    brand: "rgba(249,115,22,0.55)", brandDot: "#f97316",
+  },
+  {
+    id: "berry",
+    bg0: "#fdf4ff", bg1: "#fae8ff",
+    glow: "rgba(232,121,249,0.16)",
+    card: "#ffffff",
+    border: "rgba(232,121,249,0.22)",
+    accent0: "#e879f9", accent1: "#f0abfc", accent2: "#f5d0fe",
+    badgeFill: "rgba(232,121,249,0.12)", badgeBorder: "rgba(217,70,239,0.3)", badgeText: "#d946ef",
+    word: "#d946ef", korean: "#e879f9",
+    body: "#57534e", label: "#d946ef",
+    quoteFill: "rgba(232,121,249,0.08)", quoteBorder: "rgba(232,121,249,0.2)", quoteText: "#44403c",
+    tip: "#12c4c0", tipDim: "#2dd4bf",
+    brand: "rgba(217,70,239,0.55)", brandDot: "#e879f9",
+  },
+]
+
+export function pickPalette(item: VocabularyItem): VocabPalette {
+  const seed = `${item.id ?? ""}|${item.word}|${item.type}`
+  return VOCAB_PALETTES[hashString(seed) % VOCAB_PALETTES.length]!
+}
+
 export function vocabImageFilename(word: string): string {
   const stem = word.replace(/[^a-zA-Z0-9가-힣\-_]/g, "-")
   return `${stem || "vocabulary"}.png`
@@ -133,6 +348,7 @@ export type CardSection = {
 }
 
 export type VocabCardLayout = {
+  palette: VocabPalette
   korean: string
   typeLabel: string
   word: string
@@ -169,6 +385,7 @@ export function collectCardText(item: VocabularyItem): string {
 }
 
 export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): VocabCardLayout {
+  const p = pickPalette(item)
   const cX = VOCAB_CARD_MARGIN
   const cY = VOCAB_CARD_MARGIN
   const cW = VOCAB_CARD_W - VOCAB_CARD_MARGIN * 2
@@ -191,8 +408,8 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
       w: bw,
       h: bh,
       r: 23,
-      fill: "rgba(99,102,241,0.18)",
-      stroke: "rgba(129,140,248,0.45)",
+      fill: p.badgeFill,
+      stroke: p.badgeBorder,
       strokeWidth: 1.5,
     },
     label: {
@@ -201,7 +418,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
       y: y + bh / 2,
       size: 28,
       weight: "600",
-      color: "#a5b4fc",
+      color: p.badgeText,
       baseline: "middle" as const,
     },
   }
@@ -216,7 +433,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
       y,
       size: wSize,
       weight: "800",
-      color: "#f0f0ff",
+      color: p.word,
       baseline: "top",
     }
     y += wSize + 6
@@ -235,7 +452,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
         y,
         size: kSize,
         weight: "500",
-        color: "rgba(165,180,252,0.88)",
+        color: p.korean,
         baseline: "top",
       })
       y += kSize + 10
@@ -262,8 +479,8 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
   ) => {
     const {
       maxLines = 4,
-      textColor = "rgba(215,215,235,0.88)",
-      labelColor = "rgba(129,140,248,0.65)",
+      textColor = p.body,
+      labelColor = p.label,
       boxed = false,
       italic = false,
     } = opts
@@ -289,8 +506,8 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
           w: cw,
           h: boxH,
           r: 18,
-          fill: "rgba(99,102,241,0.10)",
-          stroke: "rgba(99,102,241,0.28)",
+          fill: p.quoteFill,
+          stroke: p.quoteBorder,
           strokeWidth: 1.5,
         }
       : undefined
@@ -322,7 +539,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
       maxLines: 3,
       boxed: true,
       italic: true,
-      textColor: "rgba(224,224,246,0.92)",
+      textColor: p.quoteText,
     })
   }
 
@@ -336,7 +553,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
         y,
         size: 26,
         weight: "700",
-        color: "rgba(251,191,36,0.65)",
+        color: p.tipDim,
         baseline: "top",
       }
       y += 38
@@ -348,7 +565,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
           y,
           size: 28,
           weight: "400",
-          color: "rgba(251,191,36,0.82)",
+          color: p.tip,
           baseline: "top",
         }
         y += 40
@@ -359,6 +576,7 @@ export function layoutVocabCard(item: VocabularyItem, measure: MeasureText): Voc
   }
 
   return {
+    palette: p,
     korean,
     typeLabel,
     word: item.word,

@@ -62,11 +62,12 @@ function textEl(line: CardText, fontFamily: string): string {
 }
 
 function paintContent(layout: VocabCardLayout, fontFamily: string): string {
+  const p = layout.palette
   const parts: string[] = [rectEl(layout.badge.rect), textEl(layout.badge.label, fontFamily)]
   for (const line of layout.wordLines) parts.push(textEl(line, fontFamily))
   for (const line of layout.koreanLines) parts.push(textEl(line, fontFamily))
   parts.push(
-    `<line x1="${layout.dividerX}" y1="${layout.dividerY}" x2="${layout.dividerX + layout.dividerW}" y2="${layout.dividerY}" stroke="url(#se-div)" stroke-width="1.5"/>`,
+    `<line x1="${layout.dividerX}" y1="${layout.dividerY}" x2="${layout.dividerX + layout.dividerW * 0.72}" y2="${layout.dividerY}" stroke="url(#se-div)" stroke-width="1.5" opacity="0.55"/>`,
   )
   for (const section of layout.sections) {
     if (section.box) parts.push(rectEl(section.box))
@@ -79,7 +80,7 @@ function paintContent(layout: VocabCardLayout, fontFamily: string): string {
   }
   const brandY = layout.brandY
   parts.push(
-    `<circle cx="${VOCAB_CARD_W / 2 - 96}" cy="${brandY}" r="6" fill="rgba(99,102,241,0.5)"/>`,
+    `<circle cx="${VOCAB_CARD_W / 2 - 96}" cy="${brandY}" r="6" fill="${p.brandDot}"/>`,
     textEl(
       {
         text: "SurviveEnglish",
@@ -87,7 +88,7 @@ function paintContent(layout: VocabCardLayout, fontFamily: string): string {
         y: brandY,
         size: 30,
         weight: "700",
-        color: "rgba(129,140,248,0.45)",
+        color: p.brand,
         baseline: "middle",
         align: "center",
       },
@@ -103,6 +104,7 @@ export function renderVocabCardSvg(
 ): string {
   const measure = opts?.measure ?? approxMeasureText
   const layout = layoutVocabCard(item, measure)
+  const p = layout.palette
   // resvg matches this name against fontFiles; do not list missing fallbacks.
   const fontFamily = opts?.fontFamily ?? "Noto Sans KR"
 
@@ -116,32 +118,32 @@ export function renderVocabCardSvg(
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="${VOCAB_CARD_W}" height="${VOCAB_CARD_H}" viewBox="0 0 ${VOCAB_CARD_W} ${VOCAB_CARD_H}">
   <defs>
-    <linearGradient id="se-bg" x1="0" y1="0" x2="0.6" y2="1">
-      <stop offset="0" stop-color="#0c0c1d"/>
-      <stop offset="1" stop-color="#08080f"/>
+    <linearGradient id="se-bg" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="${p.bg0}"/>
+      <stop offset="1" stop-color="${p.bg1}"/>
     </linearGradient>
-    <radialGradient id="se-glow" cx="162" cy="270" r="600" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#6366f1" stop-opacity="0.10"/>
-      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    <radialGradient id="se-glow" cx="194" cy="216" r="580" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${p.glow}"/>
+      <stop offset="1" stop-color="${p.glow}" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="se-accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#6366f1"/>
-      <stop offset="0.5" stop-color="#818cf8"/>
-      <stop offset="1" stop-color="#a78bfa"/>
+      <stop offset="0" stop-color="${p.accent0}"/>
+      <stop offset="0.5" stop-color="${p.accent1}"/>
+      <stop offset="1" stop-color="${p.accent2}"/>
     </linearGradient>
     <linearGradient id="se-div" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#6366f1" stop-opacity="0.5"/>
-      <stop offset="0.5" stop-color="#6366f1" stop-opacity="0.15"/>
-      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+      <stop offset="0" stop-color="${p.accent0}"/>
+      <stop offset="0.55" stop-color="${p.accent1}"/>
+      <stop offset="1" stop-color="${p.accent1}" stop-opacity="0"/>
     </linearGradient>
     <filter id="se-shadow" x="-25%" y="-20%" width="150%" height="150%">
-      <feDropShadow dx="0" dy="12" stdDeviation="30" flood-color="#000000" flood-opacity="0.6"/>
+      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#0f172a" flood-opacity="0.10"/>
     </filter>
   </defs>
   <rect width="${VOCAB_CARD_W}" height="${VOCAB_CARD_H}" fill="url(#se-bg)"/>
   <rect width="${VOCAB_CARD_W}" height="${VOCAB_CARD_H}" fill="url(#se-glow)"/>
-  <path d="${card}" fill="rgba(16,16,32,0.98)" filter="url(#se-shadow)"/>
-  <path d="${card}" fill="none" stroke="rgba(99,102,241,0.22)" stroke-width="2"/>
+  <path d="${card}" fill="${p.card}" filter="url(#se-shadow)"/>
+  <path d="${card}" fill="none" stroke="${p.border}" stroke-width="1.5"/>
   <path d="${accent}" fill="url(#se-accent)"/>
   ${paintContent(layout, fontFamily)}
 </svg>`

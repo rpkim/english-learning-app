@@ -52,25 +52,32 @@ function SingleWordTab({
   const [isLooking, setIsLooking] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [lookupDone, setLookupDone] = useState(false)
+  const [lookupError, setLookupError] = useState<string | null>(null)
 
   const handleLookup = useCallback(async () => {
     if (!word.trim()) return
     setIsLooking(true)
     setLookupDone(false)
+    setLookupError(null)
     try {
       const res = await fetch("/api/tutor-lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: word.trim(), type: "meaning", targetLang: locale }),
       })
-      if (!res.ok) return
-      const data = await res.json() as {
-        meaning?: string; nuance?: string; examples?: { en: string; ko: string }[]
+      const data = await res.json().catch(() => ({})) as {
+        meaning?: string; nuance?: string; examples?: { en: string; ko: string }[]; error?: string
+      }
+      if (!res.ok) {
+        setLookupError(data.error ?? "AI 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        return
       }
       if (data.meaning) setNativeTranslation(data.meaning)
       if (data.nuance) setDefinition(data.nuance)
       if (data.examples?.[0]?.en) setExample(data.examples[0].en)
       setLookupDone(true)
+    } catch {
+      setLookupError("네트워크 오류로 AI 조회에 실패했습니다.")
     } finally {
       setIsLooking(false)
     }
@@ -118,6 +125,9 @@ function SingleWordTab({
           AI 조회
         </Button>
       </div>
+      {lookupError && (
+        <p className="text-xs text-destructive">{lookupError}</p>
+      )}
 
       {/* Type selector */}
       <div className="flex items-center gap-2">
@@ -210,22 +220,31 @@ function BulkExtractTab({
   const [isExtracting, setIsExtracting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [extracted, setExtracted] = useState(false)
+  const [extractError, setExtractError] = useState<string | null>(null)
 
   const handleExtract = useCallback(async () => {
     if (!text.trim()) return
     setIsExtracting(true)
     setWords([])
     setExtracted(false)
+    setExtractError(null)
     try {
       const res = await fetch("/api/extract-vocab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text.trim(), targetLang: locale }),
       })
-      if (!res.ok) return
-      const data = await res.json() as { items: Omit<ExtractedWord, "selected">[] }
+      const data = await res.json().catch(() => ({})) as {
+        items?: Omit<ExtractedWord, "selected">[]; error?: string
+      }
+      if (!res.ok) {
+        setExtractError(data.error ?? "단어 추출에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        return
+      }
       setWords((data.items ?? []).map((item) => ({ ...item, selected: true })))
       setExtracted(true)
+    } catch {
+      setExtractError("네트워크 오류로 단어 추출에 실패했습니다.")
     } finally {
       setIsExtracting(false)
     }
@@ -270,6 +289,9 @@ function BulkExtractTab({
               autoFocus
             />
           </div>
+          {extractError && (
+            <p className="text-xs text-destructive">{extractError}</p>
+          )}
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} className="flex-1 h-9">취소</Button>
             <Button

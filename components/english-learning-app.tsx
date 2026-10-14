@@ -74,13 +74,29 @@ import {
   dbSaveTutorSession,
   dbDeleteTutorSession,
 } from "@/lib/db"
-import { getSupabaseClient } from "@/lib/supabase-client"
+import { getPublicSupabaseEnv, getSupabaseClient } from "@/lib/supabase-client"
 import { LoginScreen } from "@/components/login-screen"
 import { exportVocabularyPdf } from "@/lib/vocab-pdf"
 import type { User } from "@supabase/supabase-js"
 
+function MissingEnvScreen() {
+  return (
+    <div className="app-atmosphere flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
+      <h1 className="font-display text-2xl font-bold tracking-tight">환경 변수가 필요합니다</h1>
+      <p className="max-w-[36ch] text-sm leading-relaxed text-muted-foreground">
+        Supabase URL/키와 Gemini 키가 없으면 로그인·API 호출이 시작되지 않습니다.
+        프로젝트 루트에 <code className="text-foreground">.env.local</code>을 만들고
+        <code className="text-foreground"> NEXT_PUBLIC_SUPABASE_URL</code>,
+        <code className="text-foreground"> NEXT_PUBLIC_SUPABASE_ANON_KEY</code>,
+        <code className="text-foreground"> GEMINI_API_KEY</code>를 넣어 주세요.
+      </p>
+    </div>
+  )
+}
+
 export function EnglishLearningApp() {
   const UNLOCK_SESSION_KEY = "surviveenglish_app_unlocked"
+  const supabaseConfigured = getPublicSupabaseEnv().configured
 
   // Storage config
   const [storageConfig, setStorageConfig] = useState<StorageConfig>(() => getStorageConfig())
@@ -156,6 +172,10 @@ export function EnglishLearningApp() {
 
   // Supabase auth — listen for session changes
   useEffect(() => {
+    if (!supabaseConfigured) {
+      setIsAuthReady(true)
+      return
+    }
     const sb = getSupabaseClient()
     sb.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
@@ -165,7 +185,7 @@ export function EnglishLearningApp() {
       setUser(session?.user ?? null)
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [supabaseConfigured])
 
   const handleSignOut = useCallback(async () => {
     await getSupabaseClient().auth.signOut()
@@ -1233,6 +1253,10 @@ export function EnglishLearningApp() {
       setLeftPanelWidthPct(58)
     }
   }, [desktopViewMode])
+
+  if (!supabaseConfigured) {
+    return <MissingEnvScreen />
+  }
 
   if (!isAuthReady) {
     return <div className="app-atmosphere h-dvh max-h-dvh" />

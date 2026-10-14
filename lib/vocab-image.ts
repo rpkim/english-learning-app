@@ -58,7 +58,8 @@ function paintText(ctx: CanvasRenderingContext2D, line: CardText) {
   ctx.textAlign = "left"
 }
 
-function paintChrome(ctx: CanvasRenderingContext2D) {
+function paintChrome(ctx: CanvasRenderingContext2D, layout: VocabCardLayout) {
+  const p = layout.palette
   const W = VOCAB_CARD_W
   const H = VOCAB_CARD_H
   const MG = VOCAB_CARD_MARGIN
@@ -67,58 +68,67 @@ function paintChrome(ctx: CanvasRenderingContext2D) {
   const cW = W - MG * 2
   const cH = H - MG * 2
 
-  const bg = ctx.createLinearGradient(0, 0, W * 0.6, H)
-  bg.addColorStop(0, "#0c0c1d")
-  bg.addColorStop(1, "#08080f")
+  const bg = ctx.createLinearGradient(0, 0, W * 0.55, H)
+  bg.addColorStop(0, p.bg0)
+  bg.addColorStop(1, p.bg1)
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, W, H)
 
-  const glow = ctx.createRadialGradient(W * 0.15, H * 0.2, 0, W * 0.15, H * 0.2, 600)
-  glow.addColorStop(0, "rgba(99,102,241,0.10)")
-  glow.addColorStop(1, "rgba(99,102,241,0)")
+  const glow = ctx.createRadialGradient(W * 0.18, H * 0.16, 0, W * 0.18, H * 0.16, 580)
+  glow.addColorStop(0, p.glow)
+  glow.addColorStop(1, "rgba(255,255,255,0)")
   ctx.fillStyle = glow
   ctx.fillRect(0, 0, W, H)
 
+  const wash = ctx.createRadialGradient(W * 0.88, H * 0.88, 0, W * 0.88, H * 0.88, 480)
+  wash.addColorStop(0, p.glow)
+  wash.addColorStop(1, "rgba(255,255,255,0)")
+  ctx.fillStyle = wash
+  ctx.fillRect(0, 0, W, H)
+
   ctx.save()
-  ctx.shadowColor = "rgba(0,0,0,0.6)"
-  ctx.shadowBlur = 60
+  ctx.shadowColor = "rgba(15,23,42,0.10)"
+  ctx.shadowBlur = 40
   ctx.shadowOffsetY = 12
   roundRect(ctx, cX, cY, cW, cH, VOCAB_CARD_RADIUS)
-  ctx.fillStyle = "rgba(16,16,32,0.98)"
+  ctx.fillStyle = p.card
   ctx.fill()
   ctx.restore()
 
   roundRect(ctx, cX, cY, cW, cH, VOCAB_CARD_RADIUS)
-  ctx.strokeStyle = "rgba(99,102,241,0.22)"
-  ctx.lineWidth = 2
+  ctx.strokeStyle = p.border
+  ctx.lineWidth = 1.5
   ctx.stroke()
 
   const accentGrad = ctx.createLinearGradient(cX, 0, cX + cW, 0)
-  accentGrad.addColorStop(0, "#6366f1")
-  accentGrad.addColorStop(0.5, "#818cf8")
-  accentGrad.addColorStop(1, "#a78bfa")
+  accentGrad.addColorStop(0, p.accent0)
+  accentGrad.addColorStop(0.5, p.accent1)
+  accentGrad.addColorStop(1, p.accent2)
   roundRect(ctx, cX, cY, cW, 12, [44, 44, 0, 0])
   ctx.fillStyle = accentGrad
   ctx.fill()
 }
 
 function paintLayout(ctx: CanvasRenderingContext2D, layout: VocabCardLayout) {
+  const p = layout.palette
   paintRect(ctx, layout.badge.rect)
   paintText(ctx, layout.badge.label)
 
   for (const line of layout.wordLines) paintText(ctx, line)
   for (const line of layout.koreanLines) paintText(ctx, line)
 
-  const divGrad = ctx.createLinearGradient(layout.dividerX, 0, layout.dividerX + layout.dividerW, 0)
-  divGrad.addColorStop(0, "rgba(99,102,241,0.5)")
-  divGrad.addColorStop(0.5, "rgba(99,102,241,0.15)")
-  divGrad.addColorStop(1, "rgba(99,102,241,0.0)")
+  const divGrad = ctx.createLinearGradient(layout.dividerX, 0, layout.dividerX + layout.dividerW * 0.72, 0)
+  divGrad.addColorStop(0, p.accent0)
+  divGrad.addColorStop(0.55, p.accent1)
+  divGrad.addColorStop(1, "rgba(255,255,255,0)")
+  ctx.globalAlpha = 0.55
   ctx.strokeStyle = divGrad
   ctx.lineWidth = 1.5
   ctx.beginPath()
   ctx.moveTo(layout.dividerX, layout.dividerY)
-  ctx.lineTo(layout.dividerX + layout.dividerW, layout.dividerY)
+  ctx.lineTo(layout.dividerX + layout.dividerW * 0.72, layout.dividerY)
   ctx.stroke()
+  ctx.globalAlpha = 1
 
   for (const section of layout.sections) {
     if (section.box) paintRect(ctx, section.box)
@@ -133,7 +143,7 @@ function paintLayout(ctx: CanvasRenderingContext2D, layout: VocabCardLayout) {
 
   ctx.beginPath()
   ctx.arc(VOCAB_CARD_W / 2 - 96, layout.brandY, 6, 0, Math.PI * 2)
-  ctx.fillStyle = "rgba(99,102,241,0.5)"
+  ctx.fillStyle = p.brandDot
   ctx.fill()
   paintText(ctx, {
     text: "SurviveEnglish",
@@ -141,7 +151,7 @@ function paintLayout(ctx: CanvasRenderingContext2D, layout: VocabCardLayout) {
     y: layout.brandY,
     size: 30,
     weight: "700",
-    color: "rgba(129,140,248,0.45)",
+    color: p.brand,
     baseline: "middle",
     align: "center",
   })
@@ -159,7 +169,7 @@ export function downloadVocabImage(item: VocabularyItem): void {
   }
   const layout = layoutVocabCard(item, measure)
 
-  paintChrome(ctx)
+  paintChrome(ctx, layout)
   paintLayout(ctx, layout)
 
   const filename = vocabImageFilename(item.word)
