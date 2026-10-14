@@ -79,14 +79,10 @@ function paintContent(layout: VocabCardLayout, fontFamily: string): string {
     for (const line of layout.tip.lines) parts.push(textEl(line, fontFamily))
   }
   const brandY = layout.brandY
-  const brand = "SurviveEnglish"
-  const brandW = approxMeasureText(brand, { size: 30, weight: "700" })
-  const brandDotX = VOCAB_CARD_W / 2 - brandW / 2 - 18
   parts.push(
-    `<circle cx="${brandDotX}" cy="${brandY}" r="6" fill="${p.brandDot}"/>`,
     textEl(
       {
-        text: brand,
+        text: "SurviveEnglish",
         x: VOCAB_CARD_W / 2,
         y: brandY,
         size: 30,

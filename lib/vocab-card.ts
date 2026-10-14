@@ -57,7 +57,6 @@ export type VocabPalette = {
   tip: string
   tipDim: string
   brand: string
-  brandDot: string
 }
 
 /**
@@ -77,7 +76,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#475569", label: "#12c4c0",
     quoteFill: "rgba(18,196,192,0.08)", quoteBorder: "rgba(18,196,192,0.22)", quoteText: "#334155",
     tip: "#fb923c", tipDim: "#f97316",
-    brand: "rgba(18,196,192,0.65)", brandDot: "#12c4c0",
+    brand: "rgba(18,196,192,0.65)",
   },
   {
     id: "sky",
@@ -91,7 +90,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#475569", label: "#0ea5e9",
     quoteFill: "rgba(14,165,233,0.08)", quoteBorder: "rgba(14,165,233,0.2)", quoteText: "#334155",
     tip: "#f59e0b", tipDim: "#fbbf24",
-    brand: "rgba(14,165,233,0.6)", brandDot: "#0ea5e9",
+    brand: "rgba(14,165,233,0.6)",
   },
   {
     id: "coral",
@@ -105,7 +104,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#f43f5e",
     quoteFill: "rgba(251,113,133,0.08)", quoteBorder: "rgba(251,113,133,0.2)", quoteText: "#44403c",
     tip: "#f59e0b", tipDim: "#fbbf24",
-    brand: "rgba(244,63,94,0.55)", brandDot: "#fb7185",
+    brand: "rgba(244,63,94,0.55)",
   },
   {
     id: "mint",
@@ -119,7 +118,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#475569", label: "#10b981",
     quoteFill: "rgba(52,211,153,0.08)", quoteBorder: "rgba(52,211,153,0.2)", quoteText: "#334155",
     tip: "#fb923c", tipDim: "#fdba74",
-    brand: "rgba(16,185,129,0.55)", brandDot: "#34d399",
+    brand: "rgba(16,185,129,0.55)",
   },
   {
     id: "peach",
@@ -133,7 +132,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#f97316",
     quoteFill: "rgba(251,146,60,0.08)", quoteBorder: "rgba(251,146,60,0.2)", quoteText: "#44403c",
     tip: "#12c4c0", tipDim: "#2dd4bf",
-    brand: "rgba(249,115,22,0.55)", brandDot: "#fb923c",
+    brand: "rgba(249,115,22,0.55)",
   },
   {
     id: "lemon",
@@ -147,7 +146,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#eab308",
     quoteFill: "rgba(250,204,21,0.1)", quoteBorder: "rgba(250,204,21,0.24)", quoteText: "#44403c",
     tip: "#12c4c0", tipDim: "#2dd4bf",
-    brand: "rgba(202,138,4,0.55)", brandDot: "#eab308",
+    brand: "rgba(202,138,4,0.55)",
   },
   {
     id: "violet",
@@ -161,7 +160,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#8b5cf6",
     quoteFill: "rgba(167,139,250,0.08)", quoteBorder: "rgba(167,139,250,0.2)", quoteText: "#44403c",
     tip: "#fb923c", tipDim: "#fdba74",
-    brand: "rgba(139,92,246,0.55)", brandDot: "#a78bfa",
+    brand: "rgba(139,92,246,0.55)",
   },
   {
     id: "pink",
@@ -175,7 +174,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#ec4899",
     quoteFill: "rgba(244,114,182,0.08)", quoteBorder: "rgba(244,114,182,0.2)", quoteText: "#44403c",
     tip: "#12c4c0", tipDim: "#2dd4bf",
-    brand: "rgba(236,72,153,0.55)", brandDot: "#f472b6",
+    brand: "rgba(236,72,153,0.55)",
   },
   {
     id: "lime",
@@ -189,7 +188,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#4b5563", label: "#84cc16",
     quoteFill: "rgba(163,230,53,0.1)", quoteBorder: "rgba(132,204,22,0.22)", quoteText: "#374151",
     tip: "#f97316", tipDim: "#fb923c",
-    brand: "rgba(101,163,13,0.55)", brandDot: "#84cc16",
+    brand: "rgba(101,163,13,0.55)",
   },
   {
     id: "blueberry",
@@ -203,7 +202,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#475569", label: "#3b82f6",
     quoteFill: "rgba(96,165,250,0.08)", quoteBorder: "rgba(96,165,250,0.2)", quoteText: "#334155",
     tip: "#f472b6", tipDim: "#f9a8d4",
-    brand: "rgba(59,130,246,0.55)", brandDot: "#60a5fa",
+    brand: "rgba(59,130,246,0.55)",
   },
   {
     id: "tangerine",
@@ -217,7 +216,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#f97316",
     quoteFill: "rgba(249,115,22,0.08)", quoteBorder: "rgba(249,115,22,0.2)", quoteText: "#44403c",
     tip: "#3b82f6", tipDim: "#60a5fa",
-    brand: "rgba(249,115,22,0.55)", brandDot: "#f97316",
+    brand: "rgba(249,115,22,0.55)",
   },
   {
     id: "berry",
@@ -231,7 +230,7 @@ export const VOCAB_PALETTES: VocabPalette[] = [
     body: "#57534e", label: "#d946ef",
     quoteFill: "rgba(232,121,249,0.08)", quoteBorder: "rgba(232,121,249,0.2)", quoteText: "#44403c",
     tip: "#12c4c0", tipDim: "#2dd4bf",
-    brand: "rgba(217,70,239,0.55)", brandDot: "#e879f9",
+    brand: "rgba(217,70,239,0.55)",
   },
 ]
 
