@@ -322,7 +322,7 @@ export function LibraryColumn({
             </span>
           )}
           {collectionFilter && (
-            <span className="shrink-0 max-w-[8rem] truncate rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-700 dark:text-violet-300">
+            <span className="shrink-0 max-w-[8rem] truncate rounded-md border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
               {collectionFilter}
             </span>
           )}

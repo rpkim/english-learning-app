@@ -104,9 +104,14 @@ export function VocabularyDeck({
 
   if (items.length === 0) {
     return (
-      <div className={cn("flex h-full flex-col items-center justify-center gap-3 text-center", className)}>
-        <BookOpen className="h-10 w-10 text-muted-foreground/20" />
-        <p className="text-sm text-muted-foreground">저장된 단어가 없습니다.</p>
+      <div className={cn("flex h-full flex-col items-center justify-center gap-3 px-6 text-center", className)}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <BookOpen className="h-7 w-7" />
+        </div>
+        <div>
+          <p className="font-display text-base font-semibold text-foreground/85">아직 단어가 없어요</p>
+          <p className="mt-1 text-sm text-muted-foreground">튜터나 Capture에서 단어를 저장해 보세요</p>
+        </div>
       </div>
     )
   }
@@ -124,7 +129,7 @@ export function VocabularyDeck({
       >
         <div
           className={cn(
-            "rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-180",
+            "surface-elevated rounded-2xl transition-all duration-180",
             animating && direction === "left" && "-translate-x-4 opacity-0",
             animating && direction === "right" && "translate-x-4 opacity-0",
             !animating && "translate-x-0 opacity-100",
@@ -144,18 +149,17 @@ export function VocabularyDeck({
       </div>
 
       {/* Navigation */}
-      <div className="shrink-0 border-t border-border/40 px-3 py-3 sm:px-4">
+      <div className="shrink-0 border-t border-border/50 px-3 py-3 sm:px-4">
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => go(-1)}
             disabled={index === 0}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-card/80 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
 
-          {/* Dot indicators + counter */}
           <div className="flex flex-col items-center gap-1.5">
             <div className="flex items-center gap-1">
               {items.slice(Math.max(0, index - 3), index + 4).map((it, i) => {
@@ -185,7 +189,7 @@ export function VocabularyDeck({
             type="button"
             onClick={() => go(1)}
             disabled={index === items.length - 1}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-card/80 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30"
           >
             <ChevronRight className="h-5 w-5" />
           </button>

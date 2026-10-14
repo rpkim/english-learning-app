@@ -60,9 +60,9 @@ function WordRecsCard({ insight, items, count }: { insight: string; items: WordR
 
 function SentenceRecsCard({ insight, items, count }: { insight: string; items: SentenceRec[]; count: number }) {
   return (
-    <div className="rounded-xl border border-violet-500/25 bg-violet-500/5">
-      <div className="flex items-center gap-2.5 border-b border-violet-500/15 px-4 py-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-400">
+    <div className="rounded-xl border border-primary/25 bg-primary/5">
+      <div className="flex items-center gap-2.5 border-b border-primary/15 px-4 py-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
           <FileText className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
@@ -78,7 +78,7 @@ function SentenceRecsCard({ insight, items, count }: { insight: string; items: S
               <div key={i} className="rounded-lg bg-background/60 px-3 py-2.5 border border-border/40">
                 <div className="flex items-start gap-2 justify-between">
                   <p className="text-[13px] font-medium text-foreground leading-relaxed flex-1">{s.en}</p>
-                  <span className="shrink-0 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                     {s.level}
                   </span>
                 </div>
@@ -183,7 +183,7 @@ export function TutorHistoryPanel({ sessions, onDeleteSession, className, hidePa
           <div className="mt-2.5 flex gap-2">
             {[
               { label: "뜻이 뭐야?", icon: HelpCircle, color: "text-blue-500" },
-              { label: "번역해줘", icon: Languages, color: "text-violet-500" },
+              { label: "번역해줘", icon: Languages, color: "text-primary" },
               { label: "더 자연스럽게", icon: Wand2, color: "text-amber-500" },
             ].map(({ label, icon: Icon, color }) => (
               <div key={label} className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -262,7 +262,7 @@ export function TutorHistoryPanel({ sessions, onDeleteSession, className, hidePa
               }
               const typeConfig = {
                 meaning:    { icon: HelpCircle,  color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",   label: "뜻" },
-                translate:  { icon: Languages,   color: "bg-violet-500/10 text-violet-600 dark:text-violet-400", label: "번역" },
+                translate:  { icon: Languages,   color: "bg-primary/10 text-primary", label: "번역" },
                 naturalize: { icon: Wand2,       color: "bg-amber-500/10 text-amber-600 dark:text-amber-400",  label: "교정" },
               }[sessionType]
               const TypeIcon = typeConfig.icon

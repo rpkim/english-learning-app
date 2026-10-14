@@ -13,13 +13,13 @@ import type { ChallengeResult } from "@/app/api/study-challenge/route"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 export const TYPE_COLORS: Record<string, string> = {
-  word:        "bg-primary/10 text-primary border-primary/20",
-  idiom:       "bg-primary/10 text-primary border-primary/20",
-  slang:       "bg-primary/10 text-primary border-primary/20",
-  phrasal_verb:"bg-primary/10 text-primary border-primary/20",
-  expression:  "bg-amber-500/10 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-600/40",
-  rephrase:    "bg-teal-500/10 text-teal-700 border-teal-300 dark:text-teal-400 dark:border-teal-600/40",
-  translate:   "bg-blue-500/10 text-blue-700 border-blue-300 dark:text-blue-400 dark:border-blue-600/40",
+  word:        "bg-primary/10 text-primary border-primary/25",
+  idiom:       "bg-primary/10 text-primary border-primary/25",
+  slang:       "bg-primary/10 text-primary border-primary/25",
+  phrasal_verb:"bg-primary/10 text-primary border-primary/25",
+  expression:  "bg-amber-500/10 text-amber-800 border-amber-400/40 dark:text-amber-300 dark:border-amber-500/35",
+  rephrase:    "bg-teal-500/10 text-teal-800 border-teal-400/40 dark:text-teal-300 dark:border-teal-500/35",
+  translate:   "bg-sky-500/10 text-sky-800 border-sky-400/40 dark:text-sky-300 dark:border-sky-500/35",
 }
 
 export const TYPE_LABELS: Record<string, string> = {
@@ -33,8 +33,8 @@ export const TYPE_LABELS: Record<string, string> = {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  session: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  tutor:   "bg-green-500/10 text-green-600 dark:text-green-400",
+  session: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  tutor:   "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   manual:  "bg-muted text-muted-foreground",
 }
 
@@ -299,26 +299,29 @@ export function VocabularyCard({
   }
 
   const body = (
-    <div className={cn(variant === "list" ? "p-4" : "p-5 sm:p-6")}>
+    <div className={cn(variant === "list" ? "p-4" : "p-5 sm:p-7")}>
       {/* Word + badges */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h3 className={cn("font-bold tracking-tight", variant === "full" ? "text-2xl" : "text-lg")}>
+        <h3 className={cn(
+          "font-display font-semibold tracking-tight",
+          variant === "full" ? "text-2xl sm:text-[1.7rem]" : "text-lg"
+        )}>
           {isRephrase
             ? rephraseHeadline(item)
             : isTranslate
               ? translateHeadline(item)
               : item.word}
         </h3>
-        <span className={cn("rounded-full border px-2 py-0 text-[10px] font-medium leading-5", TYPE_COLORS[isTranslate ? "translate" : item.type] ?? TYPE_COLORS.word)}>
+        <span className={cn("rounded-md border px-2 py-0 text-[10px] font-medium leading-5", TYPE_COLORS[isTranslate ? "translate" : item.type] ?? TYPE_COLORS.word)}>
           {TYPE_LABELS[isTranslate ? "translate" : item.type] ?? item.type}
         </span>
         {item.source && item.source !== "manual" && (
-          <span className={cn("rounded-full px-2 py-0 text-[10px] font-medium leading-5", SOURCE_COLORS[item.source] ?? "")}>
+          <span className={cn("rounded-md px-2 py-0 text-[10px] font-medium leading-5", SOURCE_COLORS[item.source] ?? "")}>
             {SOURCE_LABELS[item.source]}
           </span>
         )}
         {item.collection && (
-          <span className="rounded-full border border-violet-400/40 bg-violet-50 px-2 py-0 text-[10px] font-medium leading-5 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+          <span className="rounded-md border border-primary/25 bg-primary/8 px-2 py-0 text-[10px] font-medium leading-5 text-primary">
             {item.collection}
           </span>
         )}
@@ -636,7 +639,7 @@ export function VocabularyCard({
           </div>
 
           {sentenceReview && (
-            <div className="space-y-2 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+            <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <div className="flex items-start gap-3">
                 <div className={cn(
                   "flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl text-xs font-bold",
@@ -653,7 +656,7 @@ export function VocabularyCard({
               </div>
 
               {sentenceReview.tip && (
-                <p className="rounded-lg border border-violet-500/15 bg-background/60 px-2.5 py-2 text-xs leading-relaxed text-foreground/80">
+                <p className="rounded-lg border border-primary/15 bg-background/60 px-2.5 py-2 text-xs leading-relaxed text-foreground/80">
                   💡 {sentenceReview.tip}
                 </p>
               )}
@@ -735,10 +738,10 @@ export function VocabularyCard({
           disabled={!onUpdateItem || incrementingView}
           title="복습 횟수 (완료와 별개)"
           className={cn(
-            "relative flex shrink-0 items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] font-medium tabular-nums transition-all",
+            "relative flex shrink-0 items-center justify-center gap-1 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium tabular-nums transition-all",
             viewCount > 0
-              ? "border-sky-400/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
-              : "border-border/60 bg-muted/40 text-muted-foreground hover:border-sky-400/40 hover:bg-sky-500/10 hover:text-sky-600",
+              ? "border-sky-400/40 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+              : "border-border/60 bg-muted/40 text-muted-foreground hover:border-sky-400/40 hover:bg-sky-500/10 hover:text-sky-700",
             incrementingView && "opacity-70",
           )}
         >
@@ -747,7 +750,7 @@ export function VocabularyCard({
             : <Eye className="h-3.5 w-3.5 shrink-0" />}
           <span className="whitespace-nowrap">봤어요</span>
           {viewCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold leading-none text-white">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-md bg-sky-500 px-1 text-[9px] font-bold leading-none text-white">
               {viewCount}
             </span>
           )}
@@ -757,10 +760,10 @@ export function VocabularyCard({
           type="button"
           onClick={() => setShowAddSentence((p) => !p)}
           className={cn(
-            "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition-all",
+            "flex shrink-0 items-center gap-1 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-all",
             showAddSentence
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-              : "border-border/60 bg-muted/40 text-muted-foreground hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-700",
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+              : "border-border/60 bg-muted/40 text-muted-foreground hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-800",
           )}
         >
           <PenLine className="h-3 w-3 shrink-0" />
@@ -770,8 +773,8 @@ export function VocabularyCard({
         <button
           type="button"
           onClick={() => downloadVocabImage(item)}
-          title="Instagram 이미지로 저장 (1080×1350)"
-          className="flex shrink-0 items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+          title="이미지로 저장 (1080×1350 · 단어마다 다른 컬러 팔레트)"
+          className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
         >
           <ImageDown className="h-3 w-3 shrink-0" />
           <span className="whitespace-nowrap">이미지</span>
@@ -784,7 +787,7 @@ export function VocabularyCard({
 
   return (
     <div className={cn(
-      "rounded-2xl border border-border/60 bg-card transition-all",
+      "surface-elevated rounded-2xl transition-all",
       item.is_mastered && "opacity-50"
     )}>
       {body}

@@ -533,7 +533,7 @@ function CollectionPicker({
             className={cn(
               "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
               selectedCollection === col
-                ? "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                ? "border-primary/40 bg-primary/10 text-primary"
                 : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground",
             )}
           >
@@ -721,9 +721,9 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
             type="button"
             onClick={startMemorize}
             disabled={memorizePool.length === 0}
-            className="flex flex-col items-center gap-1 rounded-2xl border border-violet-500/25 bg-violet-500/5 px-4 py-4 text-left transition hover:bg-violet-500/10 disabled:opacity-50"
+            className="flex flex-col items-center gap-1 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-4 text-left transition hover:bg-primary/10 disabled:opacity-50"
           >
-            <div className="flex items-center gap-2 font-semibold text-violet-700 dark:text-violet-300">
+            <div className="flex items-center gap-2 font-semibold text-primary">
               <BookOpen className="h-4 w-4" />
               단어 암기
             </div>
@@ -816,7 +816,7 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex-1 rounded-full bg-muted h-1.5 overflow-hidden">
-            <div className="h-full bg-violet-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+            <div className="h-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{idx + 1} / {cards.length}</span>
           <button type="button" onClick={exitSession} className="shrink-0 text-muted-foreground hover:text-foreground">
@@ -825,9 +825,9 @@ function QuizMode({ vocabulary, quizVocabulary, onMasterItem }: {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-          <div className="rounded-2xl border border-violet-500/20 bg-card shadow-sm overflow-hidden">
+          <div className="rounded-2xl border border-primary/20 bg-card shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-4">
-              <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary">
                 단어 암기
               </span>
               {card.collection && (
@@ -1586,17 +1586,17 @@ function TranslateMode({ vocabulary }: { vocabulary: VocabularyItem[] }) {
 
           {/* Vocab tips */}
           {result.vocab_tips.length > 0 && (
-            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 shadow-sm p-4">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-violet-500/70">단어장 활용 팁</p>
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 shadow-sm p-4">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-primary/70">단어장 활용 팁</p>
               <p className="text-xs text-muted-foreground mb-2">이 문장에 어울리는 내 단어장 단어</p>
               <div className="flex flex-wrap gap-1.5">
                 {result.vocab_tips.map((w) => (
-                  <div key={w} className="flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1">
-                    <span className="text-xs font-medium text-violet-700 dark:text-violet-300">{w}</span>
+                  <div key={w} className="flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1">
+                    <span className="text-xs font-medium text-primary">{w}</span>
                     <button
                       type="button"
                       onClick={() => speak(w)}
-                      className="text-violet-400 hover:text-violet-600"
+                      className="text-primary/60 hover:text-primary"
                     >
                       <Volume2 className="h-3 w-3" />
                     </button>
@@ -1924,14 +1924,14 @@ function InsightsMode({
 
           {/* Next words */}
           {nextWords.length > 0 && (
-            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500/70">다음에 배울 단어</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70">다음에 배울 단어</p>
                 <button
                   type="button"
                   onClick={() => void refreshWords()}
                   disabled={wordsLoading}
-                  className="flex shrink-0 items-center gap-1 rounded-full border border-violet-500/25 bg-background/80 px-2.5 py-1 text-[10px] font-medium text-violet-600 transition-colors hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300"
+                  className="flex shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-background/80 px-2.5 py-1 text-[10px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
                 >
                   {wordsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                   다른 단어 보기?
@@ -1948,10 +1948,10 @@ function InsightsMode({
                   const canAdd = onAddWord && !inVocab && !justAdded
 
                   return (
-                    <div key={key} className="flex items-start gap-2 rounded-lg border border-violet-500/15 bg-background/60 px-3 py-2">
+                    <div key={key} className="flex items-start gap-2 rounded-lg border border-primary/15 bg-background/60 px-3 py-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
-                          <span className="font-semibold text-sm text-violet-700 dark:text-violet-300 shrink-0">{w.word}</span>
+                          <span className="font-semibold text-sm text-primary shrink-0">{w.word}</span>
                           <span className="text-xs font-medium">{w.ko}</span>
                         </div>
                         <p className="text-[11px] text-muted-foreground mt-0.5">{w.reason}</p>
@@ -1970,7 +1970,7 @@ function InsightsMode({
                                 onClick={() => void handleAddWord(w, false)}
                                 disabled={!canAdd || isAdding}
                                 className={cn(
-                                  "flex items-center justify-center gap-1 rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1.5 text-[10px] font-medium text-violet-600 transition-colors hover:bg-violet-500/20 dark:text-violet-300",
+                                  "flex items-center justify-center gap-1 rounded-lg border border-primary/25 bg-primary/10 px-2 py-1.5 text-[10px] font-medium text-primary transition-colors hover:bg-primary/20",
                                   (!canAdd || isAdding) && "opacity-70",
                                 )}
                               >
@@ -2148,13 +2148,13 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
   }
 
   const PRIMARY_MODES: ModeEntry[] = [
-    { key: "quiz",      label: "단어 학습",   icon: Brain,      desc: "단어 암기 · 플래시카드 퀴즈",   group: "practice", color: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
-    { key: "listen",    label: "단어 듣기",   icon: Headphones, desc: "들으면서 암기 · 백그라운드 재생", group: "practice", color: "text-sky-500 bg-sky-500/10 border-sky-500/20" },
-    { key: "insights",  label: "패턴 분석",   icon: BarChart3,  desc: "단어·질문 AI 학습 인사이트", group: "create", color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
-    { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점",   group: "practice", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-    { key: "translate", label: "영작 연습",   icon: Languages, desc: "한국어 → 영어 영작 후 AI 첨삭", group: "practice", color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
-    { key: "upgrade",   label: strings.study.upgradeTitle, icon: ArrowRight, desc: strings.study.upgradeDesc, group: "create", color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-    { key: "story",     label: strings.study.storyTitle,   icon: BookOpen,   desc: strings.study.storyDesc,   group: "create", color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
+    { key: "quiz",      label: "단어 학습",   icon: Brain,      desc: "단어 암기 · 플래시카드 퀴즈",   group: "practice", color: "text-primary bg-primary/10 border-primary/25" },
+    { key: "listen",    label: "단어 듣기",   icon: Headphones, desc: "들으면서 암기 · 백그라운드 재생", group: "practice", color: "text-sky-600 bg-sky-500/10 border-sky-500/25 dark:text-sky-300" },
+    { key: "insights",  label: "패턴 분석",   icon: BarChart3,  desc: "단어·질문 AI 학습 인사이트", group: "create", color: "text-teal-600 bg-teal-500/10 border-teal-500/25 dark:text-teal-300" },
+    { key: "challenge", label: "문장 도전",   icon: Pencil,    desc: "단어로 문장 만들기 + AI 채점",   group: "practice", color: "text-amber-700 bg-amber-500/10 border-amber-500/25 dark:text-amber-300" },
+    { key: "translate", label: "영작 연습",   icon: Languages, desc: "한국어 → 영어 영작 후 AI 첨삭", group: "practice", color: "text-rose-600 bg-rose-500/10 border-rose-500/25 dark:text-rose-300" },
+    { key: "upgrade",   label: strings.study.upgradeTitle, icon: ArrowRight, desc: strings.study.upgradeDesc, group: "create", color: "text-sky-700 bg-sky-500/10 border-sky-500/25 dark:text-sky-300" },
+    { key: "story",     label: strings.study.storyTitle,   icon: BookOpen,   desc: strings.study.storyDesc,   group: "create", color: "text-emerald-700 bg-emerald-500/10 border-emerald-500/25 dark:text-emerald-300" },
   ]
 
   return (
@@ -2170,8 +2170,8 @@ export function StudyPanel({ vocabulary, tutorSessions = [], insightsVocabulary,
               className={cn(
                 "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-all",
                 mode === key
-                  ? cn("border opacity-100", color)
-                  : "border-border/60 bg-muted/30 text-muted-foreground opacity-70 hover:bg-muted/50 hover:text-foreground hover:opacity-100"
+                  ? cn("border opacity-100 shadow-[0_8px_20px_-14px_color-mix(in_oklch,var(--foreground)_18%,transparent)]", color)
+                  : "border-border/60 bg-card/50 text-muted-foreground opacity-80 hover:bg-muted/50 hover:text-foreground hover:opacity-100"
               )}
             >
               <div className="flex items-center gap-1.5">
