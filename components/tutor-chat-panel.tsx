@@ -418,7 +418,11 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, context: context || undefined, type: kind, targetLang: locale }),
         })
-        const data = (await res.json()) as LookupResult
+        const data = (await res.json().catch(() => ({}))) as LookupResult & { error?: string }
+        if (!res.ok || !data?.type || data.error) {
+          setItems((prev) => prev.map((it) => it.id === id ? { ...it, status: "error" } : it))
+          return
+        }
         setItems((prev) => prev.map((it) => it.id === id ? { ...it, status: "done", result: data } : it))
         sessionMessagesRef.current = [
           ...sessionMessagesRef.current,
