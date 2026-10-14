@@ -164,16 +164,75 @@ supabase/            # schema + migrations
 electron/            # desktop shell
 ```
 
-Notable APIs:
+---
 
-| Route | Role |
+## API
+
+API routes live **inside the same Next.js app** as the UI. There is **no separate API server**, no microservice, and **no `/api/v1` prefix**.
+
+| Fact | Detail |
 | --- | --- |
-| `/api/tutor-lookup` | Meaning / translate / naturalize (optional `context`) |
-| `/api/extract` / `/api/extract-vocab` | Vocabulary from transcript or text |
-| `/api/study-*` | Quiz-adjacent AI: challenge, translate, story, upgrade, insights |
-| `/api/tts` | Audio for word-listen mode |
-| `/api/vocabulary-deep-dive` | Extra examples and etymology |
-| `/api/organize-vocabulary` | AI collections |
+| Host | Same origin as the frontend (`/`, Vercel deployment, or `localhost:3000`) |
+| Path shape | `/api/<name>` only — e.g. `/api/tutor-lookup` |
+| Not used | `/api/v1/*` — these paths **do not exist** and will always **404** |
+| Implementation | App Router handlers under [`app/api/*/route.ts`](app/api) |
+| Client calls | Relative `fetch("/api/...")` from React components |
+
+### Required env for APIs to run
+
+| Variable | Where used | If missing |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Browser + auth callback | App cannot start auth; UI never reaches tutor/study, so **no `/api` calls fire** |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser + auth callback | Same as above |
+| `GEMINI_API_KEY` | Server routes only | `/api/*` AI routes return **503** (`GEMINI_API_KEY not configured`) |
+
+Put them in `.env.local` locally, and in the Vercel project env for preview/production. `NEXT_PUBLIC_*` must be present at **build and runtime** for the client bundle.
+
+### Route catalog
+
+| Route | Method | Role |
+| --- | --- | --- |
+| `/api/tutor-lookup` | `POST` | Meaning / translate / naturalize (`text`, `type`, optional `context`, `targetLang`) |
+| `/api/tutor-chat` | `POST` | Freeform tutor chat |
+| `/api/tutor-analysis` | `POST` | Analyze a tutor session |
+| `/api/extract` | `POST` | Extract vocabulary from a transcript |
+| `/api/extract-vocab` | `POST` | Extract vocabulary from pasted text |
+| `/api/translate` | `POST` | Translate a vocabulary item |
+| `/api/translate-recent` | `POST` | Translate recent / selected transcript lines |
+| `/api/translate-batch` | `POST` | Batch translate |
+| `/api/diarize` | `POST` | Speaker diarization helper |
+| `/api/study-challenge` | `POST` | Sentence challenge scoring |
+| `/api/study-translate` | `POST` | Writing-practice feedback |
+| `/api/study-upgrade` | `POST` | Expression upgrade |
+| `/api/study-story` | `POST` | Story from saved words |
+| `/api/study-insights` | `POST` | Pattern analysis |
+| `/api/study-insights-words` | `POST` | “Learn next” word suggestions |
+| `/api/vocabulary-deep-dive` | `POST` | Extra examples / etymology |
+| `/api/organize-vocabulary` | `POST` | AI collections |
+| `/api/tts` | `GET` | Audio proxy for word-listen mode |
+| `/api/auth/unlock` | `POST` | Optional `APP_PASSWORD` gate |
+
+### Quick checks
+
+```bash
+# Exists — expect 200 when GEMINI_API_KEY is set
+curl -s -X POST http://localhost:3000/api/tutor-lookup \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"hello","type":"meaning"}'
+
+# Does not exist — always 404 (no /api/v1 layer)
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -X POST http://localhost:3000/api/v1/tutor-lookup \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"hello","type":"meaning"}'
+```
+
+**Troubleshooting for MUSE / agents**
+
+1. `/` is **200** but `/api/v1/*` is **404** → wrong path. Use `/api/<route>`, not `/api/v1/...`.
+2. Page crashes or never leaves login before any `/api` request appears in Network → missing `NEXT_PUBLIC_SUPABASE_*`.
+3. `/api/tutor-lookup` returns **503** with `GEMINI_API_KEY not configured` → set `GEMINI_API_KEY` on the host and restart `pnpm dev` / redeploy.
+4. Do not look for a second process or Redis/API container — Gemini handlers are Next.js Route Handlers in this repo.
 
 ---
 
