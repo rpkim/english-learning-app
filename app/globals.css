@@ -132,8 +132,8 @@
 
 /* ─── Tailwind v4 theme mapping ───────────────────────────────────────────── */
 @theme inline {
-  --font-sans: var(--font-plus-jakarta), ui-sans-serif, sans-serif;
-  --font-display: var(--font-fraunces), var(--font-plus-jakarta), ui-serif, serif;
+  --font-sans: var(--font-outfit), "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", ui-sans-serif, sans-serif;
+  --font-display: var(--font-outfit), "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", ui-sans-serif, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -258,6 +258,7 @@
 
   .font-display {
     font-family: var(--font-display);
+    letter-spacing: -0.025em;
   }
 
   /* Soft studio atmosphere — gradient + grain, not flat */

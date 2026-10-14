@@ -1,18 +1,12 @@
 import type { Metadata } from 'next'
-import { Fraunces, Geist_Mono, Plus_Jakarta_Sans } from 'next/font/google'
+import { Geist_Mono, Outfit } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/components/providers'
 import './globals.css'
 
-const plusJakarta = Plus_Jakarta_Sans({
+const outfit = Outfit({
   subsets: ["latin"],
-  variable: "--font-plus-jakarta",
-  display: "swap",
-})
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
+  variable: "--font-outfit",
   display: "swap",
 })
 
@@ -45,7 +39,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${plusJakarta.variable} ${fraunces.variable} ${geistMono.variable} bg-background`}
+      className={`${outfit.variable} ${geistMono.variable} bg-background`}
     >
       <body className="font-sans antialiased h-dvh overflow-hidden overscroll-none">
         <Providers>

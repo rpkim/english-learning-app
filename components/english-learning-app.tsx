@@ -1480,7 +1480,7 @@ export function EnglishLearningApp() {
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_8px_20px_-10px_color-mix(in_oklch,var(--primary)_70%,transparent)] shrink-0">
             <GraduationCap className="h-4 w-4" />
           </div>
-          <h1 className="font-display text-foreground font-semibold text-sm sm:text-base leading-none tracking-tight">
+          <h1 className="font-display text-foreground font-bold text-sm sm:text-base leading-none tracking-tight">
             SurviveEnglish
           </h1>
         </div>

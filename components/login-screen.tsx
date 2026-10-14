@@ -45,7 +45,7 @@ export function LoginScreen() {
           </svg>
         </div>
         <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-[2.5rem]">
             SurviveEnglish
           </h1>
           <p className="mt-2 max-w-[28ch] text-sm leading-relaxed text-muted-foreground">
