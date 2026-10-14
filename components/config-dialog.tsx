@@ -21,6 +21,7 @@ import {
   type LocalAsrModel,
 } from "@/lib/storage-config"
 import { cn } from "@/lib/utils"
+import { ApiKeysPanel } from "@/components/api-keys-panel"
 
 interface ConfigDialogProps {
   open: boolean
@@ -67,12 +68,14 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
           <DialogHeader className="pr-8 text-left">
             <DialogTitle>설정</DialogTitle>
             <DialogDescription>
-              음성 인식 모델(Whisper 등)과 번역 API를 설정합니다.
+              음성 인식, 번역을 설정하고 API 키를 발급합니다. 키는 발급 즉시 적용됩니다.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
+            <ApiKeysPanel active={open} />
+
+            <div className="space-y-1.5 border-t border-border/60 pt-4">
               <Label className="text-xs">음성 인식 모델 (로컬, 오픈소스)</Label>
               <Select value={localAsrModel} onValueChange={(value) => setLocalAsrModel(value as LocalAsrModel)}>
                 <SelectTrigger className="h-10 w-full text-sm">

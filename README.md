@@ -109,6 +109,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 
 GEMINI_API_KEY=your_gemini_api_key
 
+# Required for REST / MCP (server-only; never expose to the browser)
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
 # Optional: extra gate in front of the app
 # APP_PASSWORD=some-password
 ```
@@ -120,7 +123,7 @@ Never commit API keys. `NEXT_PUBLIC_*` values ship to the browser; protect user 
 In the Supabase SQL Editor, run:
 
 1. [`supabase/schema.sql`](supabase/schema.sql) — tables, RLS policies
-2. Any extra files under [`supabase/migrations/`](supabase/migrations/) that are not already in `schema.sql`
+2. Any extra files under [`supabase/migrations/`](supabase/migrations/) that are not already in `schema.sql` (existing projects: run [`supabase/migrations/add_api_keys.sql`](supabase/migrations/add_api_keys.sql) for REST/MCP keys)
 
 Policies are **per-user** (`auth.uid() = user_id`). Confirm they are enabled on the live project before using real data.
 
@@ -155,25 +158,103 @@ pnpm desktop:dist     # production DMG
 
 ```
 app/                 # Next.js routes and API handlers
-  api/               # Gemini, TTS, extract, study, translate, auth
+  api/               # App AI routes (Gemini, TTS, study, …)
+  api/v1/            # REST API for agents (API key or session)
+  api/mcp/           # MCP Streamable HTTP
   auth/callback/     # OAuth return
 components/          # UI: tutor, vocabulary, study, capture, listen
 hooks/               # TTS, transcription
-lib/                 # Supabase client, types, i18n, DB helpers
+lib/                 # Supabase client, types, i18n, DB helpers, vocab-card PNG
 supabase/            # schema + migrations
 electron/            # desktop shell
+assets/fonts/        # Noto Sans KR for server-side card PNGs
 ```
 
-Notable APIs:
+App-internal AI helpers (browser `fetch("/api/…")`, need `GEMINI_API_KEY`):
 
 | Route | Role |
 | --- | --- |
 | `/api/tutor-lookup` | Meaning / translate / naturalize (optional `context`) |
 | `/api/extract` / `/api/extract-vocab` | Vocabulary from transcript or text |
-| `/api/study-*` | Quiz-adjacent AI: challenge, translate, story, upgrade, insights |
+| `/api/study-*` | Challenge, translate, story, upgrade, insights |
 | `/api/tts` | Audio for word-listen mode |
 | `/api/vocabulary-deep-dive` | Extra examples and etymology |
 | `/api/organize-vocabulary` | AI collections |
+
+---
+
+## REST API and MCP
+
+Agents (including MUSE), scripts, and other apps can read/write **your** vocabulary, conversations, and tutor lookups — including **card PNG download**.
+
+This lived on branch `cursor/2026-06-02-6get-8c69f` and is restored here. If `/api/v1/*` returns 404 on a deployment, that build does not include this stack yet (redeploy this branch / merge to main).
+
+Create a key in **Settings → API keys**. The plaintext value (`se_live_…`) is shown once; only a SHA-256 hash is stored.
+
+Auth for `/api/v1/*` and `/api/mcp`:
+
+```http
+Authorization: Bearer se_live_…
+```
+
+Signed-in session cookies also work from the browser. CORS allows cross-origin REST/MCP calls. Data access uses the service role on the server and always filters by the key owner — do **not** put `SUPABASE_SERVICE_ROLE_KEY` in client code.
+
+### REST v1
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/v1` | Discovery |
+| `GET` | `/api/v1/me` | `{ user_id, via }` |
+| `GET` `POST` | `/api/v1/keys` | List / create (session only) |
+| `DELETE` | `/api/v1/keys/:id` | Revoke (session only) |
+| `GET` `POST` | `/api/v1/vocabulary` | Query: `q`, `collection`, `type`, `mastered`, `limit`, `offset` |
+| `GET` `PATCH` `DELETE` | `/api/v1/vocabulary/:id` | PATCH may include `add_sentence` |
+| `GET` | `/api/v1/vocabulary/:id/image` | **1080×1350 PNG card** (`?format=png`). Auth required. |
+| `GET` `POST` | `/api/v1/conversations` | |
+| `GET` `PATCH` `DELETE` | `/api/v1/conversations/:id` | |
+| `POST` | `/api/v1/tutor/lookup` | Body: `{ text, type, context?, targetLang? }` |
+
+**Find “apples to apples” and download the card image**
+
+```bash
+# 1) Search
+curl -s "https://YOUR_DOMAIN/api/v1/vocabulary?q=apples%20to%20apples" \
+  -H "Authorization: Bearer se_live_…"
+
+# 2) Download PNG (use an id from step 1)
+curl -sS -o apples-to-apples.png \
+  "https://YOUR_DOMAIN/api/v1/vocabulary/VOCAB_ID/image" \
+  -H "Authorization: Bearer se_live_…"
+```
+
+In-app **이미지** button uses the same card layout ([`lib/vocab-card.ts`](lib/vocab-card.ts)) via browser canvas ([`lib/vocab-image.ts`](lib/vocab-image.ts)). The REST/MCP path renders PNG with `@resvg/resvg-js` ([`lib/vocab-card-png.ts`](lib/vocab-card-png.ts)).
+
+### MCP
+
+Yes — MCP is supported. Streamable HTTP JSON-RPC at **`POST /api/mcp`** (protocol `2025-03-26`). Cursor example (`mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "surviveenglish": {
+      "url": "https://YOUR_DOMAIN/api/mcp",
+      "headers": {
+        "Authorization": "Bearer se_live_…"
+      }
+    }
+  }
+}
+```
+
+Tools: `list_vocabulary`, `get_vocabulary`, `get_vocabulary_image`, `add_vocabulary`, `update_vocabulary`, `delete_vocabulary`, `add_user_sentence`, `list_conversations`, `get_conversation`, `tutor_lookup`.
+
+### Troubleshooting for MUSE / agents
+
+1. `/api/v1/*` is **404** → this deployment is missing the REST stack; deploy a build that includes `app/api/v1`.
+2. `/api/v1/*` is **401** → missing/invalid `Authorization: Bearer se_live_…` (create a key in Settings).
+3. `/api/v1/*` is **503** about service role → set `SUPABASE_SERVICE_ROLE_KEY` on the host.
+4. Image route works only with a **vocabulary id** (`/api/v1/vocabulary/:id/image`), not `/api/v1/…/image?word=…`.
+5. App AI routes like `/api/tutor-lookup` still need `GEMINI_API_KEY`.
 
 ---
 
@@ -181,6 +262,7 @@ Notable APIs:
 
 - User vocabulary, transcripts, and tutor history live in **your** Supabase project, not in this git repo.
 - Server routes expect `GEMINI_API_KEY` on the host. If you deploy a public URL, treat those routes as a cost surface (rate limits / auth recommended).
+- REST/MCP require `SUPABASE_SERVICE_ROLE_KEY` server-side only; API keys are hashed (`se_live_…` shown once).
 - The listen-mode TTS proxy calls an upstream speech endpoint; it can fail or be blocked depending on network policy.
 
 ---

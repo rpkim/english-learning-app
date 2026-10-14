@@ -6,6 +6,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  serverExternalPackages: ["@resvg/resvg-js"],
+  // Bundle the Noto Sans KR TTF into the image/MCP serverless functions.
+  outputFileTracingIncludes: {
+    "/api/v1/vocabulary/[id]/image": ["./assets/fonts/**/*"],
+    "/api/mcp": ["./assets/fonts/**/*"],
+  },
   // Allow SharedArrayBuffer for Whisper WASM (required for @xenova/transformers)
   async headers() {
     return [
