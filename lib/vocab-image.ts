@@ -95,118 +95,119 @@ type VocabPalette = {
   brandDot: string
 }
 
+/** Light studio cards — white canvas, refined ink colors for type. */
 const PALETTES: VocabPalette[] = [
   {
     id: "harbor",
-    bg0: "#0b1f2a", bg1: "#07141c",
-    glow: "rgba(56,189,248,0.14)",
-    card: "rgba(12,32,44,0.97)",
-    border: "rgba(56,189,248,0.28)",
-    accent0: "#0ea5e9", accent1: "#38bdf8", accent2: "#7dd3fc",
-    badgeFill: "rgba(14,165,233,0.16)", badgeBorder: "rgba(125,211,252,0.45)", badgeText: "#7dd3fc",
-    word: "#f0f9ff", korean: "rgba(125,211,252,0.9)",
-    body: "rgba(224,242,254,0.88)", label: "rgba(56,189,248,0.7)",
-    quoteFill: "rgba(14,165,233,0.1)", quoteBorder: "rgba(56,189,248,0.32)", quoteText: "rgba(240,249,255,0.94)",
-    tip: "rgba(251,191,36,0.88)", tipDim: "rgba(251,191,36,0.65)",
-    brand: "rgba(125,211,252,0.45)", brandDot: "rgba(14,165,233,0.55)",
+    bg0: "#f4f9fc", bg1: "#eef6fb",
+    glow: "rgba(14,165,233,0.12)",
+    card: "#ffffff",
+    border: "rgba(14,116,144,0.14)",
+    accent0: "#0284c7", accent1: "#0ea5e9", accent2: "#38bdf8",
+    badgeFill: "rgba(14,165,233,0.10)", badgeBorder: "rgba(2,132,199,0.28)", badgeText: "#0369a1",
+    word: "#0c4a6e", korean: "#0284c7",
+    body: "#334155", label: "#0284c7",
+    quoteFill: "rgba(14,165,233,0.06)", quoteBorder: "rgba(14,165,233,0.18)", quoteText: "#0f172a",
+    tip: "#b45309", tipDim: "#d97706",
+    brand: "rgba(2,132,199,0.55)", brandDot: "#0ea5e9",
   },
   {
     id: "coral",
-    bg0: "#2a1214", bg1: "#18090b",
-    glow: "rgba(251,113,133,0.14)",
-    card: "rgba(42,20,24,0.97)",
-    border: "rgba(251,113,133,0.28)",
-    accent0: "#f43f5e", accent1: "#fb7185", accent2: "#fda4af",
-    badgeFill: "rgba(244,63,94,0.16)", badgeBorder: "rgba(253,164,175,0.45)", badgeText: "#fda4af",
-    word: "#fff1f2", korean: "rgba(253,164,175,0.92)",
-    body: "rgba(255,228,230,0.88)", label: "rgba(251,113,133,0.72)",
-    quoteFill: "rgba(244,63,94,0.1)", quoteBorder: "rgba(251,113,133,0.32)", quoteText: "rgba(255,241,242,0.94)",
-    tip: "rgba(252,211,77,0.9)", tipDim: "rgba(252,211,77,0.65)",
-    brand: "rgba(253,164,175,0.45)", brandDot: "rgba(244,63,94,0.55)",
+    bg0: "#fff7f6", bg1: "#fff1f0",
+    glow: "rgba(244,63,94,0.10)",
+    card: "#ffffff",
+    border: "rgba(225,29,72,0.14)",
+    accent0: "#e11d48", accent1: "#f43f5e", accent2: "#fb7185",
+    badgeFill: "rgba(244,63,94,0.08)", badgeBorder: "rgba(225,29,72,0.26)", badgeText: "#be123c",
+    word: "#881337", korean: "#e11d48",
+    body: "#3f3f46", label: "#e11d48",
+    quoteFill: "rgba(244,63,94,0.05)", quoteBorder: "rgba(244,63,94,0.16)", quoteText: "#18181b",
+    tip: "#b45309", tipDim: "#d97706",
+    brand: "rgba(225,29,72,0.5)", brandDot: "#f43f5e",
   },
   {
     id: "matcha",
-    bg0: "#102018", bg1: "#08140e",
-    glow: "rgba(52,211,153,0.13)",
-    card: "rgba(16,36,26,0.97)",
-    border: "rgba(52,211,153,0.26)",
-    accent0: "#10b981", accent1: "#34d399", accent2: "#6ee7b7",
-    badgeFill: "rgba(16,185,129,0.15)", badgeBorder: "rgba(110,231,183,0.42)", badgeText: "#6ee7b7",
-    word: "#ecfdf5", korean: "rgba(110,231,183,0.9)",
-    body: "rgba(209,250,229,0.88)", label: "rgba(52,211,153,0.7)",
-    quoteFill: "rgba(16,185,129,0.1)", quoteBorder: "rgba(52,211,153,0.3)", quoteText: "rgba(236,253,245,0.94)",
-    tip: "rgba(251,191,36,0.88)", tipDim: "rgba(251,191,36,0.65)",
-    brand: "rgba(110,231,183,0.42)", brandDot: "rgba(16,185,129,0.55)",
+    bg0: "#f5fbf7", bg1: "#eef8f2",
+    glow: "rgba(16,185,129,0.11)",
+    card: "#ffffff",
+    border: "rgba(5,150,105,0.14)",
+    accent0: "#059669", accent1: "#10b981", accent2: "#34d399",
+    badgeFill: "rgba(16,185,129,0.09)", badgeBorder: "rgba(5,150,105,0.26)", badgeText: "#047857",
+    word: "#064e3b", korean: "#059669",
+    body: "#334155", label: "#059669",
+    quoteFill: "rgba(16,185,129,0.06)", quoteBorder: "rgba(16,185,129,0.16)", quoteText: "#0f172a",
+    tip: "#b45309", tipDim: "#d97706",
+    brand: "rgba(5,150,105,0.5)", brandDot: "#10b981",
   },
   {
     id: "amber",
-    bg0: "#24180a", bg1: "#140d05",
-    glow: "rgba(251,191,36,0.14)",
-    card: "rgba(38,26,12,0.97)",
-    border: "rgba(251,191,36,0.28)",
-    accent0: "#f59e0b", accent1: "#fbbf24", accent2: "#fcd34d",
-    badgeFill: "rgba(245,158,11,0.16)", badgeBorder: "rgba(252,211,77,0.45)", badgeText: "#fcd34d",
-    word: "#fffbeb", korean: "rgba(252,211,77,0.9)",
-    body: "rgba(254,243,199,0.88)", label: "rgba(251,191,36,0.72)",
-    quoteFill: "rgba(245,158,11,0.1)", quoteBorder: "rgba(251,191,36,0.32)", quoteText: "rgba(255,251,235,0.94)",
-    tip: "rgba(110,231,183,0.9)", tipDim: "rgba(110,231,183,0.65)",
-    brand: "rgba(252,211,77,0.42)", brandDot: "rgba(245,158,11,0.55)",
+    bg0: "#fffbf2", bg1: "#fff7e8",
+    glow: "rgba(245,158,11,0.12)",
+    card: "#ffffff",
+    border: "rgba(217,119,6,0.16)",
+    accent0: "#d97706", accent1: "#f59e0b", accent2: "#fbbf24",
+    badgeFill: "rgba(245,158,11,0.10)", badgeBorder: "rgba(217,119,6,0.28)", badgeText: "#b45309",
+    word: "#78350f", korean: "#d97706",
+    body: "#44403c", label: "#d97706",
+    quoteFill: "rgba(245,158,11,0.07)", quoteBorder: "rgba(245,158,11,0.18)", quoteText: "#1c1917",
+    tip: "#047857", tipDim: "#059669",
+    brand: "rgba(217,119,6,0.5)", brandDot: "#f59e0b",
   },
   {
     id: "lilac",
-    bg0: "#1a1428", bg1: "#0e0a18",
-    glow: "rgba(167,139,250,0.14)",
-    card: "rgba(28,22,44,0.97)",
-    border: "rgba(167,139,250,0.28)",
-    accent0: "#8b5cf6", accent1: "#a78bfa", accent2: "#c4b5fd",
-    badgeFill: "rgba(139,92,246,0.16)", badgeBorder: "rgba(196,181,253,0.45)", badgeText: "#c4b5fd",
-    word: "#f5f3ff", korean: "rgba(196,181,253,0.9)",
-    body: "rgba(237,233,254,0.88)", label: "rgba(167,139,250,0.7)",
-    quoteFill: "rgba(139,92,246,0.1)", quoteBorder: "rgba(167,139,250,0.32)", quoteText: "rgba(245,243,255,0.94)",
-    tip: "rgba(251,191,36,0.88)", tipDim: "rgba(251,191,36,0.65)",
-    brand: "rgba(196,181,253,0.42)", brandDot: "rgba(139,92,246,0.55)",
+    bg0: "#faf8ff", bg1: "#f4f0ff",
+    glow: "rgba(139,92,246,0.10)",
+    card: "#ffffff",
+    border: "rgba(124,58,237,0.14)",
+    accent0: "#7c3aed", accent1: "#8b5cf6", accent2: "#a78bfa",
+    badgeFill: "rgba(139,92,246,0.09)", badgeBorder: "rgba(124,58,237,0.26)", badgeText: "#6d28d9",
+    word: "#4c1d95", korean: "#7c3aed",
+    body: "#3f3f46", label: "#7c3aed",
+    quoteFill: "rgba(139,92,246,0.06)", quoteBorder: "rgba(139,92,246,0.16)", quoteText: "#18181b",
+    tip: "#b45309", tipDim: "#d97706",
+    brand: "rgba(124,58,237,0.5)", brandDot: "#8b5cf6",
   },
   {
     id: "slate",
-    bg0: "#141820", bg1: "#0a0d12",
-    glow: "rgba(148,163,184,0.12)",
-    card: "rgba(22,26,34,0.97)",
-    border: "rgba(148,163,184,0.28)",
-    accent0: "#64748b", accent1: "#94a3b8", accent2: "#cbd5e1",
-    badgeFill: "rgba(100,116,139,0.18)", badgeBorder: "rgba(203,213,225,0.4)", badgeText: "#cbd5e1",
-    word: "#f8fafc", korean: "rgba(203,213,225,0.9)",
-    body: "rgba(226,232,240,0.88)", label: "rgba(148,163,184,0.72)",
-    quoteFill: "rgba(100,116,139,0.12)", quoteBorder: "rgba(148,163,184,0.32)", quoteText: "rgba(248,250,252,0.94)",
-    tip: "rgba(56,189,248,0.88)", tipDim: "rgba(56,189,248,0.65)",
-    brand: "rgba(203,213,225,0.42)", brandDot: "rgba(100,116,139,0.55)",
+    bg0: "#f7f8fa", bg1: "#f1f3f6",
+    glow: "rgba(100,116,139,0.10)",
+    card: "#ffffff",
+    border: "rgba(71,85,105,0.14)",
+    accent0: "#475569", accent1: "#64748b", accent2: "#94a3b8",
+    badgeFill: "rgba(100,116,139,0.10)", badgeBorder: "rgba(71,85,105,0.24)", badgeText: "#334155",
+    word: "#0f172a", korean: "#475569",
+    body: "#334155", label: "#64748b",
+    quoteFill: "rgba(100,116,139,0.07)", quoteBorder: "rgba(100,116,139,0.16)", quoteText: "#0f172a",
+    tip: "#0284c7", tipDim: "#0ea5e9",
+    brand: "rgba(71,85,105,0.5)", brandDot: "#64748b",
   },
   {
     id: "ocean",
-    bg0: "#0a1e2e", bg1: "#061018",
-    glow: "rgba(45,212,191,0.13)",
-    card: "rgba(12,34,48,0.97)",
-    border: "rgba(45,212,191,0.26)",
-    accent0: "#14b8a6", accent1: "#2dd4bf", accent2: "#5eead4",
-    badgeFill: "rgba(20,184,166,0.15)", badgeBorder: "rgba(94,234,212,0.42)", badgeText: "#5eead4",
-    word: "#f0fdfa", korean: "rgba(94,234,212,0.9)",
-    body: "rgba(204,251,241,0.88)", label: "rgba(45,212,191,0.7)",
-    quoteFill: "rgba(20,184,166,0.1)", quoteBorder: "rgba(45,212,191,0.3)", quoteText: "rgba(240,253,250,0.94)",
-    tip: "rgba(251,146,60,0.9)", tipDim: "rgba(251,146,60,0.65)",
-    brand: "rgba(94,234,212,0.42)", brandDot: "rgba(20,184,166,0.55)",
+    bg0: "#f3fbfa", bg1: "#ebf8f6",
+    glow: "rgba(20,184,166,0.11)",
+    card: "#ffffff",
+    border: "rgba(13,148,136,0.14)",
+    accent0: "#0d9488", accent1: "#14b8a6", accent2: "#2dd4bf",
+    badgeFill: "rgba(20,184,166,0.09)", badgeBorder: "rgba(13,148,136,0.26)", badgeText: "#0f766e",
+    word: "#134e4a", korean: "#0d9488",
+    body: "#334155", label: "#0d9488",
+    quoteFill: "rgba(20,184,166,0.06)", quoteBorder: "rgba(20,184,166,0.16)", quoteText: "#0f172a",
+    tip: "#c2410c", tipDim: "#ea580c",
+    brand: "rgba(13,148,136,0.5)", brandDot: "#14b8a6",
   },
   {
     id: "rose",
-    bg0: "#26141c", bg1: "#160a10",
-    glow: "rgba(244,114,182,0.13)",
-    card: "rgba(40,22,32,0.97)",
-    border: "rgba(244,114,182,0.28)",
-    accent0: "#ec4899", accent1: "#f472b6", accent2: "#f9a8d4",
-    badgeFill: "rgba(236,72,153,0.15)", badgeBorder: "rgba(249,168,212,0.42)", badgeText: "#f9a8d4",
-    word: "#fdf2f8", korean: "rgba(249,168,212,0.9)",
-    body: "rgba(252,231,243,0.88)", label: "rgba(244,114,182,0.7)",
-    quoteFill: "rgba(236,72,153,0.1)", quoteBorder: "rgba(244,114,182,0.3)", quoteText: "rgba(253,242,248,0.94)",
-    tip: "rgba(167,139,250,0.9)", tipDim: "rgba(167,139,250,0.65)",
-    brand: "rgba(249,168,212,0.42)", brandDot: "rgba(236,72,153,0.55)",
+    bg0: "#fff7fb", bg1: "#fdf0f7",
+    glow: "rgba(236,72,153,0.10)",
+    card: "#ffffff",
+    border: "rgba(219,39,119,0.14)",
+    accent0: "#db2777", accent1: "#ec4899", accent2: "#f472b6",
+    badgeFill: "rgba(236,72,153,0.08)", badgeBorder: "rgba(219,39,119,0.26)", badgeText: "#be185d",
+    word: "#831843", korean: "#db2777",
+    body: "#3f3f46", label: "#db2777",
+    quoteFill: "rgba(236,72,153,0.05)", quoteBorder: "rgba(236,72,153,0.16)", quoteText: "#18181b",
+    tip: "#7c3aed", tipDim: "#8b5cf6",
+    brand: "rgba(219,39,119,0.5)", brandDot: "#ec4899",
   },
 ]
 
@@ -237,17 +238,16 @@ export function downloadVocabImage(item: VocabularyItem): void {
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, W, H)
 
-  // Soft radial glow (top-left)
-  const glow = ctx.createRadialGradient(W * 0.18, H * 0.18, 0, W * 0.18, H * 0.18, 620)
+  // Soft tint washes — airy, not dark
+  const glow = ctx.createRadialGradient(W * 0.18, H * 0.16, 0, W * 0.18, H * 0.16, 580)
   glow.addColorStop(0, p.glow)
-  glow.addColorStop(1, "rgba(0,0,0,0)")
+  glow.addColorStop(1, "rgba(255,255,255,0)")
   ctx.fillStyle = glow
   ctx.fillRect(0, 0, W, H)
 
-  // Secondary wash (bottom-right) for depth without clutter
-  const wash = ctx.createRadialGradient(W * 0.85, H * 0.85, 0, W * 0.85, H * 0.85, 500)
-  wash.addColorStop(0, p.glow.replace(/[\d.]+\)$/, "0.08)"))
-  wash.addColorStop(1, "rgba(0,0,0,0)")
+  const wash = ctx.createRadialGradient(W * 0.88, H * 0.88, 0, W * 0.88, H * 0.88, 480)
+  wash.addColorStop(0, p.glow)
+  wash.addColorStop(1, "rgba(255,255,255,0)")
   ctx.fillStyle = wash
   ctx.fillRect(0, 0, W, H)
 
@@ -256,9 +256,9 @@ export function downloadVocabImage(item: VocabularyItem): void {
   const cX = MG, cY = MG, cW = W - MG * 2, cH = H - MG * 2
 
   ctx.save()
-  ctx.shadowColor = "rgba(0,0,0,0.55)"
-  ctx.shadowBlur = 56
-  ctx.shadowOffsetY = 14
+  ctx.shadowColor = "rgba(15,23,42,0.10)"
+  ctx.shadowBlur = 40
+  ctx.shadowOffsetY = 12
   roundRect(ctx, cX, cY, cW, cH, 44)
   ctx.fillStyle = p.card
   ctx.fill()
@@ -266,7 +266,7 @@ export function downloadVocabImage(item: VocabularyItem): void {
 
   roundRect(ctx, cX, cY, cW, cH, 44)
   ctx.strokeStyle = p.border
-  ctx.lineWidth = 2
+  ctx.lineWidth = 1.5
   ctx.stroke()
 
   // Top accent bar — shared structural identity across palettes
@@ -337,18 +337,20 @@ export function downloadVocabImage(item: VocabularyItem): void {
     y += 8
   }
 
-  // Divider — same accent language as the top bar
+  // Divider — soft accent fade on light paper
   y += 12
   const divGrad = ctx.createLinearGradient(cx, 0, cx + cw, 0)
   divGrad.addColorStop(0, p.accent0)
   divGrad.addColorStop(0.55, p.accent1)
   divGrad.addColorStop(1, "rgba(255,255,255,0)")
+  ctx.globalAlpha = 0.55
   ctx.strokeStyle = divGrad
   ctx.lineWidth = 1.5
   ctx.beginPath()
   ctx.moveTo(cx, y)
   ctx.lineTo(cx + cw * 0.72, y)
   ctx.stroke()
+  ctx.globalAlpha = 1
   y += 36
 
   // ── Section helper ────────────────────────────────────────────────────────
