@@ -51,11 +51,11 @@ function buildQuickTabs(s: ReturnType<typeof import("@/lib/i18n").t>): QuickTab[
 }
 
 const REGISTER_COLOR: Record<string, string> = {
-  Formal: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  Formal: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
   Neutral: "bg-muted text-muted-foreground",
-  Casual: "bg-green-500/10 text-green-600 dark:text-green-400",
-  Slang: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-  Business: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  Casual: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  Slang: "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  Business: "bg-teal-500/10 text-teal-700 dark:text-teal-300",
 }
 
 export interface TutorChatPanelProps {
@@ -107,7 +107,7 @@ function MeaningCard({ r, speak, speakingText }: { r: MeaningResult; speak: (t: 
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <h2 className="text-2xl font-bold tracking-tight">{r.query}</h2>
+        <h2 className="font-display text-2xl font-semibold tracking-tight">{r.query}</h2>
         <TtsBtn text={r.query} speak={speak} speakingText={speakingText} size="md" />
         {r.register && (
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", REGISTER_COLOR[r.register] ?? REGISTER_COLOR.Neutral)}>
@@ -264,15 +264,15 @@ function EmptyState({ activeQuick }: { activeQuick: QuickKind }) {
   }
   const { title, desc } = messages[activeQuick]
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/60">
-        {activeQuick === "meaning" && <HelpCircle className="h-6 w-6 text-muted-foreground/60" />}
-        {activeQuick === "translate" && <Languages className="h-6 w-6 text-muted-foreground/60" />}
-        {activeQuick === "naturalize" && <Sparkles className="h-6 w-6 text-muted-foreground/60" />}
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center animate-fade-rise">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        {activeQuick === "meaning" && <HelpCircle className="h-6 w-6" />}
+        {activeQuick === "translate" && <Languages className="h-6 w-6" />}
+        {activeQuick === "naturalize" && <Sparkles className="h-6 w-6" />}
       </div>
       <div>
-        <p className="font-semibold text-foreground/80">{title}</p>
-        <p className="mt-1 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">{desc}</p>
+        <p className="font-display text-lg font-semibold tracking-tight text-foreground/90">{title}</p>
+        <p className="mt-1.5 max-w-[28ch] mx-auto text-sm leading-relaxed text-muted-foreground whitespace-pre-line">{desc}</p>
       </div>
     </div>
   )
@@ -480,7 +480,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
             </div>
 
             {items.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+              <div key={item.id} className="surface-elevated rounded-2xl overflow-hidden animate-fade-rise">
                 {item.status === "loading" && <LookupSkeleton />}
 
                 {item.status === "error" && (
@@ -523,7 +523,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                             <button
                               type="button"
                               onClick={() => handleSave(item)}
-                              className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                              className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-[0_8px_18px_-12px_color-mix(in_oklch,var(--primary)_70%,transparent)] transition hover:bg-primary/90"
                             >
                               <BookmarkPlus className="h-4 w-4" />
                               {strings.tutor.save}
@@ -532,7 +532,7 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
                           <button
                             type="button"
                             onClick={() => handlePass(item.id)}
-                            className="flex items-center gap-1 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                            className="flex items-center gap-1 rounded-xl border border-border/60 bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                           >
                             {strings.tutor.pass}
                             <ChevronRight className="h-4 w-4" />
@@ -559,10 +559,10 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
               type="button"
               onClick={() => selectTab(kind)}
               className={cn(
-                "flex shrink-0 h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-all",
+                "flex shrink-0 h-8 items-center gap-1.5 rounded-xl border px-3.5 text-xs font-medium transition-all",
                 activeQuick === kind
-                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                  : "border-border/60 bg-muted/40 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  ? "border-primary bg-primary text-primary-foreground shadow-[0_8px_18px_-12px_color-mix(in_oklch,var(--primary)_70%,transparent)]"
+                  : "border-border/60 bg-card/70 text-muted-foreground hover:border-primary/40 hover:text-foreground"
               )}
             >
               <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -573,9 +573,9 @@ export function TutorChatPanel({ transcriptContext, className, onAddVocabularyIt
 
         {/* Gemini-style pill input */}
         <div className={cn(
-          "relative flex items-end gap-0 rounded-3xl border bg-card shadow-sm transition-all",
+          "relative flex items-end gap-0 rounded-2xl border bg-card/90 shadow-[0_10px_28px_-18px_color-mix(in_oklch,var(--foreground)_22%,transparent)] transition-all",
           isListening
-            ? "border-red-400/60 ring-2 ring-red-400/20"
+            ? "border-recording/60 ring-2 ring-recording/20"
             : "border-border/60 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10"
         )}>
           {activeTabMeta.multiline ? (

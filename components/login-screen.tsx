@@ -22,14 +22,22 @@ export function LoginScreen() {
       setError(error.message)
       setLoading(false)
     }
-    // On success, browser redirects to Google — no need to setLoading(false)
   }
 
   return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-8 bg-background px-6">
-      {/* Logo + title */}
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+    <div className="app-atmosphere relative flex h-dvh flex-col items-center justify-center gap-8 overflow-hidden px-6">
+      {/* Soft floating orbs — presence without clutter */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-16 top-1/4 h-56 w-56 rounded-full bg-primary/15 blur-3xl animate-soft-float"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-10 bottom-1/4 h-64 w-64 rounded-full bg-accent-warm/40 blur-3xl animate-soft-float [animation-delay:1.2s]"
+      />
+
+      <div className="animate-fade-rise flex flex-col items-center gap-4 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_32px_-12px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
           <svg viewBox="0 0 24 24" fill="none" className="h-8 w-8" stroke="currentColor" strokeWidth={1.8}>
             <path d="M12 2L2 7l10 5 10-5-10-5z" strokeLinejoin="round" />
             <path d="M2 17l10 5 10-5" strokeLinejoin="round" />
@@ -37,17 +45,19 @@ export function LoginScreen() {
           </svg>
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">SurviveEnglish</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            AI 영어 튜터 · 단어장 · 발음 학습
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            SurviveEnglish
+          </h1>
+          <p className="mt-2 max-w-[28ch] text-sm leading-relaxed text-muted-foreground">
+            실제 대화에서 배우고, 단어장으로 남기고, 공부로 이어가세요
           </p>
         </div>
       </div>
 
-      {/* Login card */}
-      <div className="w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-        <p className="mb-5 text-center text-sm text-muted-foreground">
-          Google 계정으로 로그인하면 단어장과 학습 기록이<br />
+      <div className="animate-fade-rise surface-elevated w-full max-w-sm rounded-2xl p-6 [animation-delay:80ms]">
+        <p className="mb-5 text-center text-sm leading-relaxed text-muted-foreground">
+          Google 계정으로 로그인하면 단어장과 학습 기록이
+          <br />
           모든 기기에서 동기화됩니다.
         </p>
 
@@ -55,12 +65,12 @@ export function LoginScreen() {
           type="button"
           onClick={() => void signInWithGoogle()}
           disabled={loading}
-          className="flex w-full items-center justify-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-sm font-medium transition hover:bg-muted disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-3 rounded-xl bg-primary px-4 py-3.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 active:scale-[0.99] disabled:opacity-60"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <svg viewBox="0 0 24 24" className="h-5 w-5" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 rounded-sm bg-white p-0.5" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
@@ -75,7 +85,7 @@ export function LoginScreen() {
         )}
       </div>
 
-      <p className="max-w-[28ch] text-center text-[11px] text-muted-foreground/60 leading-relaxed">
+      <p className="animate-fade-rise max-w-[30ch] text-center text-[11px] leading-relaxed text-muted-foreground/70 [animation-delay:140ms]">
         로그인 시 서비스 이용약관 및 개인정보처리방침에 동의하게 됩니다.
       </p>
     </div>

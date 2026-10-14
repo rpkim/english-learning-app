@@ -1235,7 +1235,7 @@ export function EnglishLearningApp() {
   }, [desktopViewMode])
 
   if (!isAuthReady) {
-    return <div className="h-dvh max-h-dvh bg-background" />
+    return <div className="app-atmosphere h-dvh max-h-dvh" />
   }
 
   if (!user) {
@@ -1465,23 +1465,24 @@ export function EnglishLearningApp() {
   return (
     <div
       className={cn(
-        "flex flex-col h-dvh max-h-dvh min-h-0 w-full overflow-hidden overscroll-none bg-background text-foreground transition-[padding] duration-200",
+        "app-atmosphere flex flex-col h-dvh max-h-dvh min-h-0 w-full overflow-hidden overscroll-none text-foreground transition-[padding] duration-200",
         isRecording && audioSource === "system" ? "pt-14" : "pt-0"
       )}
     >
       {/* Header */}
       <header className={cn(
-        "border-border bg-card/90 backdrop-blur-md supports-backdrop-filter:bg-card/80",
+        "border-border/70 bg-card/75 backdrop-blur-xl supports-backdrop-filter:bg-card/65",
         "sticky top-0 z-40 flex shrink-0 items-center justify-between gap-2 border-b min-w-0",
         "px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-5 sm:py-2.5 sm:pt-2.5"
       )}>
         {/* Brand */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="bg-primary/10 rounded-lg p-1.5 shrink-0">
-            <GraduationCap className="text-primary h-4 w-4" />
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_8px_20px_-10px_color-mix(in_oklch,var(--primary)_70%,transparent)] shrink-0">
+            <GraduationCap className="h-4 w-4" />
           </div>
-          <h1 className="text-foreground font-bold text-sm sm:text-base leading-none">SurviveEnglish</h1>
-
+          <h1 className="font-display text-foreground font-semibold text-sm sm:text-base leading-none tracking-tight">
+            SurviveEnglish
+          </h1>
         </div>
 
         {/* Center: recording status (mobile) or model status (desktop) */}
@@ -1796,7 +1797,7 @@ export function EnglishLearningApp() {
 
             {/* Bottom navigation — fixed like native app shell */}
             <nav
-              className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-md supports-backdrop-filter:bg-card/90"
+              className="fixed inset-x-0 bottom-0 z-50 border-t border-border/70 bg-card/85 backdrop-blur-xl supports-backdrop-filter:bg-card/75"
               style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             >
               <div className="grid h-14 grid-cols-4">
@@ -1819,24 +1820,29 @@ export function EnglishLearningApp() {
                       onClick={() => setMobileMainTab(value)}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "flex flex-col items-center justify-center gap-0.5 transition-colors duration-150",
+                        "relative flex flex-col items-center justify-center gap-1 transition-colors duration-150",
                         isActive ? "text-primary" : "text-muted-foreground active:text-foreground"
                       )}
                     >
+                      {isActive && (
+                        <span
+                          aria-hidden
+                          className="animate-nav-ink absolute inset-x-5 top-1 h-0.5 rounded-full bg-primary origin-center"
+                        />
+                      )}
                       <div className="relative">
                         <Icon
                           className={cn(
-                            "h-5 w-5",
+                            "h-5 w-5 transition-transform duration-200",
+                            isActive && "scale-105",
                             value === "capture" && isRecording && "text-recording"
                           )}
                         />
-                        {/* Recording pulse indicator on Capture nav item */}
                         {value === "capture" && isRecording && (
                           <span className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full border-[1.5px] border-card bg-recording" />
                         )}
-                        {/* Count badge */}
                         {badgeCount !== null && (
-                          <span className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-primary px-1 text-center font-mono text-[9px] font-bold leading-4 text-primary-foreground">
+                          <span className="absolute -right-2 -top-1.5 min-w-4 rounded-md bg-primary px-1 text-center font-mono text-[9px] font-bold leading-4 text-primary-foreground">
                             {badgeCount > 99 ? "99+" : badgeCount}
                           </span>
                         )}
@@ -1874,7 +1880,7 @@ export function EnglishLearningApp() {
             )}
 
             {/* Top tab bar */}
-            <nav className="shrink-0 border-b border-border bg-card/95">
+            <nav className="shrink-0 border-b border-border/70 bg-card/70 backdrop-blur-md">
               <div className="flex h-11 items-stretch">
                 {(
                   [
@@ -1896,7 +1902,7 @@ export function EnglishLearningApp() {
                         "relative flex items-center gap-2 border-b-2 px-5 text-sm font-medium transition-colors",
                         isActive
                           ? "border-primary text-primary"
-                          : "border-transparent text-muted-foreground hover:text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
                       )}
                     >
                       <Icon className={cn("h-4 w-4", value === "capture" && isRecording && "text-recording")} />
@@ -1905,7 +1911,7 @@ export function EnglishLearningApp() {
                         <span className="absolute right-2 top-2 h-1.5 w-1.5 animate-pulse rounded-full bg-recording" />
                       )}
                       {badgeCount !== null && (
-                        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary">
+                        <span className="rounded-md bg-primary/12 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary">
                           {badgeCount > 99 ? "99+" : badgeCount}
                         </span>
                       )}
