@@ -23,15 +23,17 @@ When the brief is the app itself (tutor · capture · words · study):
 
 **Do not** recommend purple→indigo, cream+terracotta+display-serif, or broadsheet kits (§1.3).
 
-## Current product mapping (as of restore)
+## Applied product mapping (`precise-quiet`)
+
+Live in `app/globals.css` + `app/layout.tsx`. Kit note: [`brand-kits/precise-quiet/DESIGN.md`](./brand-kits/precise-quiet/DESIGN.md).
 
 | SurviveEnglish token | Signal Field role |
 | --- | --- |
-| `--primary` / aqua | `--color-signal` (keep one family) |
-| `--foreground` | `--color-ink` |
-| `--background` | `--color-field` |
-| `--muted-foreground` | `--color-ink-soft` |
+| `--primary` | `--color-signal` (`#129a90` / bright in dark) |
+| `--foreground` | `--color-ink` / chalk in dark |
+| `--background` | `--color-field` / field-deep in dark |
+| `--muted-foreground` | ink-soft |
 | `--destructive` | `--color-danger` |
-| Pretendard (UI) | Prefer IBM Plex when adopting full kit; Pretendard OK for KO/EN until type option switches to `plex` |
+| UI type | IBM Plex Sans + Mono; Pretendard fallback for Hangul |
 
 Vocab card PNG palettes may stay multi-hue for **saved assets**; product chrome must stay one signal family.
