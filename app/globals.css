@@ -132,8 +132,9 @@
 
 /* ─── Tailwind v4 theme mapping ───────────────────────────────────────────── */
 @theme inline {
-  --font-sans: var(--font-outfit), "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", ui-sans-serif, sans-serif;
-  --font-display: var(--font-outfit), "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", ui-sans-serif, sans-serif;
+  /* Pretendard: bilingual KO/EN product UI standard */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);

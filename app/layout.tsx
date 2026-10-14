@@ -1,14 +1,8 @@
 import type { Metadata } from 'next'
-import { Geist_Mono, Outfit } from 'next/font/google'
+import { Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/components/providers'
 import './globals.css'
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
-  display: "swap",
-})
 
 const geistMono = Geist_Mono({
   subsets: ["latin"],
@@ -39,8 +33,14 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${outfit.variable} ${geistMono.variable} bg-background`}
+      className={`${geistMono.variable} bg-background`}
     >
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        />
+      </head>
       <body className="font-sans antialiased h-dvh overflow-hidden overscroll-none">
         <Providers>
           {children}
